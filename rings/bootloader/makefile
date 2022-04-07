@@ -42,6 +42,6 @@ PACKAGES       = rings/bootloader \
 		stmlib/system
 RESOURCES      = rings/resources
 
-TOOLCHAIN_PATH ?= /usr/local/arm-4.8.3/
+TOOLCHAIN_PATH ?= /Users/leandrob13/Projects/audio/eurorack/gcc-arm-none-eabi-4_8-2013q4/
 
 include stmlib/makefile.inc
