@@ -29,6 +29,7 @@
 #include "rings/dsp/string_synth_part.h"
 
 #include "rings/dsp/dsp.h"
+#include "rings/dsp/scales.h"
 
 namespace rings {
 
@@ -106,7 +107,7 @@ void StringSynthPart::ComputeRegistration(
 // - more compact, leaving room for a bass
 // - more frequent note changes between adjacent chords.
 // - dropped fifth.
-const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
+/*const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
   {
     { -12.0f, -0.01f,  0.0f,  0.01f,  0.02f, 11.99f, 12.0f, 24.0f }, // OCT
     { -12.0f, -5.01f, -5.0f,  0.0f,   7.0f,  12.0f,  19.0f, 24.0f }, // 5
@@ -159,7 +160,7 @@ const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
     { 4.0f,  7.0f,  11.0f }, // M7
     { 4.0f,  7.0f,  12.0f }, // M
   }
-};
+};*/
 
 void StringSynthPart::ProcessEnvelopes(
     float shape,
@@ -249,8 +250,14 @@ void StringSynthPart::Process(
   // Assign note to a voice.
   uint8_t envelope_flags[kMaxStringSynthPolyphony];
   
+  //int note_index = ((int)performance_state.note + 1) % 12;
+  //int scale_index = performance_state.chord;
+  //float adjustment = (float)note_index - scale_notes[scale_index][note_index];
+  //float scaled_note = performance_state.note - adjustment;
+
   fill(&envelope_flags[0], &envelope_flags[polyphony_], 0);
   note_filter_.Process(performance_state.note, performance_state.strum);
+  //note_filter_.Process(scaled_note, performance_state.strum);
   if (performance_state.strum) {
     group_[active_group_].tonic = note_filter_.stable_note();
     envelope_flags[active_group_] = ENVELOPE_FLAG_FALLING_EDGE;
@@ -273,7 +280,7 @@ void StringSynthPart::Process(
   
   copy(&in[0], &in[size], &aux[0]);
   copy(&in[0], &in[size], &out[0]);
-  int32_t chord_size = min(kStringSynthVoices / polyphony_, kMaxChordSize);
+  int32_t chord_size = 4;// min(kStringSynthVoices / polyphony_, kMaxChordSize);
   for (int32_t group = 0; group < polyphony_; ++group) {
     ChordNote notes[kMaxChordSize];
     float harmonics[kNumHarmonics * 2];
@@ -282,19 +289,27 @@ void StringSynthPart::Process(
         envelope_values[group] * 0.25f,
         patch.brightness,
         harmonics);
-    
+    // NOTE SETTING
+    int note_index = ((int)group_[group].tonic + 1) % 12;
+    int scale_index = group_[group].chord;
+    float adjustment = (float)note_index - scale_notes[scale_index][note_index];
+    float scaled_note = group_[group].tonic - adjustment;
+    //float transposed_note = scaled_note + performance_state.tonic;
     // Note enough polyphony for smooth transition between chords.
+    // Note is V/Oct, tonic is frequency knob + input value
+    //int scale_chord_index = (voice_arrangement_ == 3) ? scale_chords[scale_index][note_index] : 0;
+    int scale_chord_index = scale_chords[scale_index][note_index];
     for (int32_t i = 0; i < chord_size; ++i) {
-      float n = chords[polyphony_ - 1][group_[group].chord][i];
+      float n = voice_chords[voice_arrangement_ - 1][scale_chord_index][i]; //chords[polyphony_ - 1][group_[group].chord][i];
       notes[i].note = n;
       notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
     }
 
     for (int32_t chord_note = 0; chord_note < chord_size; ++chord_note) {
       float note = 0.0f;
-      note += group_[group].tonic;
+      note += scaled_note; // group_[group].tonic;
       note += performance_state.tonic;
-      note += performance_state.fm;
+      // note += performance_state.fm;
       note += notes[chord_note].note;
       
       float amplitudes[kNumHarmonics * 2];

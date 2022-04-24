@@ -46,7 +46,7 @@
 
 namespace rings {
 
-const int32_t kMaxStringSynthPolyphony = 4;
+const int32_t kMaxStringSynthPolyphony = 4; // Original 4
 const int32_t kStringSynthVoices = 12;
 const int32_t kMaxChordSize = 8;
 const int32_t kNumHarmonics = 3;
@@ -86,7 +86,8 @@ class StringSynthPart {
 
   inline void set_polyphony(int32_t polyphony) {
     int32_t old_polyphony = polyphony_;
-    polyphony_ = std::min(polyphony, kMaxStringSynthPolyphony);
+    voice_arrangement_ = std::min(polyphony, kMaxStringSynthPolyphony);
+    polyphony_ = 1; // std::min(polyphony, kMaxStringSynthPolyphony);
     for (int32_t i = old_polyphony; i < polyphony_; ++i) {
       group_[i].tonic = group_[0].tonic + i * 0.01f;
     }
@@ -122,6 +123,7 @@ class StringSynthPart {
   int32_t active_group_;
   uint32_t step_counter_;
   int32_t polyphony_;
+  int32_t voice_arrangement_;
   int32_t acquisition_delay_;
   
   FxType fx_type_;
