@@ -29,7 +29,6 @@
 #include "rings/dsp/string_synth_part.h"
 
 #include "rings/dsp/dsp.h"
-#include "rings/dsp/scales.h"
 
 namespace rings {
 
@@ -103,11 +102,13 @@ void StringSynthPart::ComputeRegistration(
   }
 }
 
+#ifdef BRYAN_CHORDS
+
 // Chord table by Bryan Noll:
 // - more compact, leaving room for a bass
 // - more frequent note changes between adjacent chords.
 // - dropped fifth.
-/*const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
+const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
   {
     { -12.0f, -0.01f,  0.0f,  0.01f,  0.02f, 11.99f, 12.0f, 24.0f }, // OCT
     { -12.0f, -5.01f, -5.0f,  0.0f,   7.0f,  12.0f,  19.0f, 24.0f }, // 5
@@ -121,31 +122,31 @@ void StringSynthPart::ComputeRegistration(
     { -12.0f, -5.0f,   0.0f,  4.0f,   7.0f,  11.0f,  19.0f, 24.0f }, // M7
     { -12.0f, -5.0f,   0.0f,  4.0f,   7.0f,  12.0f,  19.0f, 24.0f }, // M
   },
-  {  // Minor chord progression { 0, 2, 3, 5, 7, 8, 10 }
-    { -12.0f, 0.0f, 3.0f, 7.0f }, // i
-    { -10.0f, 2.0f, 5.0f, 8.0f }, // ii•
-    { -9.0f, 3.0f, 7.0f, 10.0f }, // III
-    { -7.0f, 5.0f, 8.0f, 12.0f }, // iv
-    { -5.0f, 7.0f, 10.0f, 14.0f }, // v
-    { -3.0f, 8.0f, 12.0f,  15.0f }, // VI
-    { -1.0f, 10.0f, 14.0f,  17.0f }, // VII
-    { 0.0f, 7.0f,  12.0f,  15.0f }, // i 1st inv
-    { 2.0f, 8.0f, 14.0f,  17.0f }, // ii• 1st inv
-    { 3.0f, 10.0f, 15.0f,  19.0f }, // III 1st inv
-    { 5.0f, 12.f, 17.0f,  20.0f }, // iv 1st inv
+  {
+    { -12.0f, -0.01f,  0.0f,  0.01f, 12.0f,  12.01f }, // OCT
+    { -12.0f, -5.01f, -5.0f,  0.0f,   7.0f,  12.0f  }, // 5
+    { -12.0f, -5.0f,   0.0f,  5.0f,   7.0f,  12.0f  }, // sus4
+    { -12.0f, -5.0f,   0.0f,  0.01f,  3.0f,  12.0f  }, // m
+    { -12.0f, -5.01f, -5.0f,  0.0f,   3.0f,  10.0f  }, // m7
+    { -12.0f, -5.0f,   0.0f,  3.0f,  10.0f,  14.0f  }, // m9
+    { -12.0f, -5.0f,   0.0f,  3.0f,  10.0f,  17.0f  }, // m11
+    { -12.0f, -5.0f,   0.0f,  2.0f,   9.0f,  16.0f  }, // 69
+    { -12.0f, -5.0f,   0.0f,  4.0f,  11.0f,  14.0f  }, // M9
+    { -12.0f, -5.0f,   0.0f,  4.0f,   7.0f,  11.0f  }, // M7
+    { -12.0f, -5.0f,   0.0f,  4.0f,   7.0f,  12.0f  }, // M
   },
-  {  // Mayor chord progression { 0, 2, 4, 5, 7, 9, 11 }
-    { -12.0f, 0.0f, 4.0f, 7.0f }, // I
-    { -10.0f, 2.0f, 5.0f, 9.0f }, // ii
-    { -8.0f, 4.0f, 7.0f, 11.0f }, // iii
-    { -7.0f, 5.0f, 9.0f, 12.0f }, // IV
-    { -5.0f, 7.0f, 11.0f, 14.0f }, // V
-    { -3.0f, 9.0f, 12.0f,  16.0f }, // vi
-    { -1.0f, 11.0f, 14.0f,  18.0f }, // vii•
-    { 0.0f, 7.0f,  12.0f,  16.0f }, // I 1st inv
-    { 2.0f, 9.0f, 14.0f,  17.0f }, // ii 1st inv
-    { 4.0f, 11.0f, 16.0f,  19.0f }, // iii 1st inv
-    { 5.0f, 12.f, 17.0f,  21.0f }, // IV 1st inv
+  {
+    { -12.0f, 0.0f,  0.01f, 12.0f }, // OCT
+    { -12.0f, 6.99f, 7.0f,  12.0f }, // 5
+    { -12.0f, 5.0f,  7.0f,  12.0f }, // sus4
+    { -12.0f, 3.0f, 11.99f, 12.0f }, // m
+    { -12.0f, 3.0f,  9.99f, 10.0f }, // m7
+    { -12.0f, 3.0f, 10.0f,  14.0f }, // m9
+    { -12.0f, 3.0f, 10.0f,  17.0f }, // m11
+    { -12.0f, 2.0f,  9.0f,  16.0f }, // 69
+    { -12.0f, 4.0f, 11.0f,  14.0f }, // M9
+    { -12.0f, 4.0f,  7.0f,  11.0f }, // M7
+    { -12.0f, 4.0f,  7.0f,  12.0f }, // M
   },
   {
     { 0.0f,  0.01f, 12.0f }, // OCT
@@ -160,7 +161,70 @@ void StringSynthPart::ComputeRegistration(
     { 4.0f,  7.0f,  11.0f }, // M7
     { 4.0f,  7.0f,  12.0f }, // M
   }
-};*/
+};
+
+#else
+
+// Original chord table:
+// - wider, occupies more room in the spectrum.
+// - minimum number of note changes between adjacent chords.
+// - consistent with the chord table used for the sympathetic strings model.
+const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
+  {
+    { -24.0f, -12.0f, 0.0f, 0.01f, 0.02f, 11.99f, 12.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  10.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  12.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  14.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  17.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 6.99f, 7.0f,  18.99f, 19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  17.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  14.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  12.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  11.0f,  19.0f, 24.0f },
+    { -24.0f, -12.0f, 0.0f, 5.0f,  7.0f,  12.0f,  17.0f, 24.0f },
+  },
+  {
+    { -24.0f, -12.0f, 0.0f, 0.01f, 12.0f, 12.01f },
+    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  10.0f },
+    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  12.0f },
+    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  14.0f },
+    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  17.0f },
+    { -24.0f, -12.0f, 0.0f, 6.99f, 12.0f, 19.0f },
+    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  17.0f },
+    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  14.0f },
+    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  12.0f },
+    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  11.0f },
+    { -24.0f, -12.0f, 0.0f, 5.00f, 7.0f, 12.0f },
+  },
+  {
+    { -12.0f, 0.0f, 0.01f, 12.0f },
+    { -12.0f, 3.0f, 7.0f,  10.0f },
+    { -12.0f, 3.0f, 7.0f,  12.0f },
+    { -12.0f, 3.0f, 7.0f,  14.0f },
+    { -12.0f, 3.0f, 7.0f,  17.0f },
+    { -12.0f, 7.0f, 12.0f, 19.0f },
+    { -12.0f, 4.0f, 7.0f,  17.0f },
+    { -12.0f, 4.0f, 7.0f,  14.0f },
+    { -12.0f, 4.0f, 7.0f,  12.0f },
+    { -12.0f, 4.0f, 7.0f,  11.0f },
+    { -12.0f, 5.0f, 7.0f, 12.0f },
+  },
+  {
+    { 0.0f, 0.01f, 12.0f },
+    { 0.0f, 3.0f,  10.0f },
+    { 0.0f, 3.0f,  7.0f },
+    { 0.0f, 3.0f,  14.0f },
+    { 0.0f, 3.0f,  17.0f },
+    { 0.0f, 7.0f,  19.0f },
+    { 0.0f, 4.0f,  17.0f },
+    { 0.0f, 4.0f,  14.0f },
+    { 0.0f, 4.0f,  7.0f },
+    { 0.0f, 4.0f,  11.0f },
+    { 0.0f, 5.0f,  7.0f },
+  }
+};
+
+#endif  // BRYAN_CHORDS
 
 void StringSynthPart::ProcessEnvelopes(
     float shape,
@@ -250,14 +314,8 @@ void StringSynthPart::Process(
   // Assign note to a voice.
   uint8_t envelope_flags[kMaxStringSynthPolyphony];
   
-  //int note_index = ((int)performance_state.note + 1) % 12;
-  //int scale_index = performance_state.chord;
-  //float adjustment = (float)note_index - scale_notes[scale_index][note_index];
-  //float scaled_note = performance_state.note - adjustment;
-
   fill(&envelope_flags[0], &envelope_flags[polyphony_], 0);
   note_filter_.Process(performance_state.note, performance_state.strum);
-  //note_filter_.Process(scaled_note, performance_state.strum);
   if (performance_state.strum) {
     group_[active_group_].tonic = note_filter_.stable_note();
     envelope_flags[active_group_] = ENVELOPE_FLAG_FALLING_EDGE;
@@ -280,7 +338,7 @@ void StringSynthPart::Process(
   
   copy(&in[0], &in[size], &aux[0]);
   copy(&in[0], &in[size], &out[0]);
-  int32_t chord_size = 4;// min(kStringSynthVoices / polyphony_, kMaxChordSize);
+  int32_t chord_size = min(kStringSynthVoices / polyphony_, kMaxChordSize);
   for (int32_t group = 0; group < polyphony_; ++group) {
     ChordNote notes[kMaxChordSize];
     float harmonics[kNumHarmonics * 2];
@@ -289,27 +347,19 @@ void StringSynthPart::Process(
         envelope_values[group] * 0.25f,
         patch.brightness,
         harmonics);
-    // NOTE SETTING
-    int note_index = ((int)group_[group].tonic + 1) % 12;
-    int scale_index = group_[group].chord;
-    float adjustment = (float)note_index - scale_notes[scale_index][note_index];
-    float scaled_note = group_[group].tonic - adjustment;
-    //float transposed_note = scaled_note + performance_state.tonic;
+    
     // Note enough polyphony for smooth transition between chords.
-    // Note is V/Oct, tonic is frequency knob + input value
-    //int scale_chord_index = (voice_arrangement_ == 3) ? scale_chords[scale_index][note_index] : 0;
-    int scale_chord_index = scale_chords[scale_index][note_index];
     for (int32_t i = 0; i < chord_size; ++i) {
-      float n = voice_chords[voice_arrangement_ - 1][scale_chord_index][i]; //chords[polyphony_ - 1][group_[group].chord][i];
+      float n = chords[polyphony_ - 1][group_[group].chord][i];
       notes[i].note = n;
       notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
     }
 
     for (int32_t chord_note = 0; chord_note < chord_size; ++chord_note) {
       float note = 0.0f;
-      note += scaled_note; // group_[group].tonic;
+      note += group_[group].tonic;
       note += performance_state.tonic;
-      // note += performance_state.fm;
+      note += performance_state.fm;
       note += notes[chord_note].note;
       
       float amplitudes[kNumHarmonics * 2];
