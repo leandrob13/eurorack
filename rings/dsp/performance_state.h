@@ -31,7 +31,8 @@
 
 namespace rings {
 
-const int32_t kNumChords = 11;
+const int32_t kNumChords = 7;
+const int32_t kNumModes = 7; //11;
 
 struct PerformanceState {
   bool strum;
@@ -43,6 +44,7 @@ struct PerformanceState {
   float note;
   float fm;
   int32_t chord;
+  int32_t mode;
 };
 
 }  // namespace rings

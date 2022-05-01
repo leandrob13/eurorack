@@ -211,6 +211,7 @@ class CvScaler {
   float cv_c1_;
   float cv_low_;
   int32_t chord_;
+  int32_t mode_;
   
   bool normalization_probe_enabled_;
   bool normalization_probe_forced_state_;

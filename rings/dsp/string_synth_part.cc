@@ -30,6 +30,8 @@
 
 #include "rings/dsp/dsp.h"
 
+#include "rings/dsp/scales.h"
+
 namespace rings {
 
 using namespace std;
@@ -102,13 +104,11 @@ void StringSynthPart::ComputeRegistration(
   }
 }
 
-#ifdef BRYAN_CHORDS
-
 // Chord table by Bryan Noll:
 // - more compact, leaving room for a bass
 // - more frequent note changes between adjacent chords.
 // - dropped fifth.
-const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
+/*const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
   {
     { -12.0f, -0.01f,  0.0f,  0.01f,  0.02f, 11.99f, 12.0f, 24.0f }, // OCT
     { -12.0f, -5.01f, -5.0f,  0.0f,   7.0f,  12.0f,  19.0f, 24.0f }, // 5
@@ -161,70 +161,7 @@ const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
     { 4.0f,  7.0f,  11.0f }, // M7
     { 4.0f,  7.0f,  12.0f }, // M
   }
-};
-
-#else
-
-// Original chord table:
-// - wider, occupies more room in the spectrum.
-// - minimum number of note changes between adjacent chords.
-// - consistent with the chord table used for the sympathetic strings model.
-const float chords[kMaxStringSynthPolyphony][kNumChords][kMaxChordSize] = {
-  {
-    { -24.0f, -12.0f, 0.0f, 0.01f, 0.02f, 11.99f, 12.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  10.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  12.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  14.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 3.0f,  7.0f,  17.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 6.99f, 7.0f,  18.99f, 19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  17.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  14.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  12.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 4.0f,  7.0f,  11.0f,  19.0f, 24.0f },
-    { -24.0f, -12.0f, 0.0f, 5.0f,  7.0f,  12.0f,  17.0f, 24.0f },
-  },
-  {
-    { -24.0f, -12.0f, 0.0f, 0.01f, 12.0f, 12.01f },
-    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  10.0f },
-    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  12.0f },
-    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  14.0f },
-    { -24.0f, -12.0f, 0.0f, 3.00f, 7.0f,  17.0f },
-    { -24.0f, -12.0f, 0.0f, 6.99f, 12.0f, 19.0f },
-    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  17.0f },
-    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  14.0f },
-    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  12.0f },
-    { -24.0f, -12.0f, 0.0f, 4.00f, 7.0f,  11.0f },
-    { -24.0f, -12.0f, 0.0f, 5.00f, 7.0f, 12.0f },
-  },
-  {
-    { -12.0f, 0.0f, 0.01f, 12.0f },
-    { -12.0f, 3.0f, 7.0f,  10.0f },
-    { -12.0f, 3.0f, 7.0f,  12.0f },
-    { -12.0f, 3.0f, 7.0f,  14.0f },
-    { -12.0f, 3.0f, 7.0f,  17.0f },
-    { -12.0f, 7.0f, 12.0f, 19.0f },
-    { -12.0f, 4.0f, 7.0f,  17.0f },
-    { -12.0f, 4.0f, 7.0f,  14.0f },
-    { -12.0f, 4.0f, 7.0f,  12.0f },
-    { -12.0f, 4.0f, 7.0f,  11.0f },
-    { -12.0f, 5.0f, 7.0f, 12.0f },
-  },
-  {
-    { 0.0f, 0.01f, 12.0f },
-    { 0.0f, 3.0f,  10.0f },
-    { 0.0f, 3.0f,  7.0f },
-    { 0.0f, 3.0f,  14.0f },
-    { 0.0f, 3.0f,  17.0f },
-    { 0.0f, 7.0f,  19.0f },
-    { 0.0f, 4.0f,  17.0f },
-    { 0.0f, 4.0f,  14.0f },
-    { 0.0f, 4.0f,  7.0f },
-    { 0.0f, 4.0f,  11.0f },
-    { 0.0f, 5.0f,  7.0f },
-  }
-};
-
-#endif  // BRYAN_CHORDS
+};*/
 
 void StringSynthPart::ProcessEnvelopes(
     float shape,
@@ -338,7 +275,7 @@ void StringSynthPart::Process(
   
   copy(&in[0], &in[size], &aux[0]);
   copy(&in[0], &in[size], &out[0]);
-  int32_t chord_size = min(kStringSynthVoices / polyphony_, kMaxChordSize);
+  int32_t chord_size = 3; // min(kStringSynthVoices / polyphony_, kMaxChordSize);
   for (int32_t group = 0; group < polyphony_; ++group) {
     ChordNote notes[kMaxChordSize];
     float harmonics[kNumHarmonics * 2];
@@ -349,8 +286,8 @@ void StringSynthPart::Process(
         harmonics);
     
     // Note enough polyphony for smooth transition between chords.
-    for (int32_t i = 0; i < chord_size; ++i) {
-      float n = chords[polyphony_ - 1][group_[group].chord][i];
+    for (int32_t i = 0; i < 3; ++i) {
+      float n = scales[performance_state.mode][group_[group].chord][i];
       notes[i].note = n;
       notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
     }
