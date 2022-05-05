@@ -215,18 +215,26 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   
   // Hysteresis on chord.
   float chord = calibration_data_->offset[ADC_CHANNEL_CV_STRUCTURE] - \
-      adc_.float_value(ADC_CHANNEL_CV_STRUCTURE);
-  chord *= adc_lp_[ADC_CHANNEL_ATTENUVERTER_STRUCTURE];
-  float mode = adc_lp_[ADC_CHANNEL_POT_STRUCTURE];// chord += adc_lp_[ADC_CHANNEL_POT_STRUCTURE];
+      adc_.float_value(ADC_CHANNEL_CV_STRUCTURE);   
+  float attv_structure = adc_lp_[ADC_CHANNEL_ATTENUVERTER_STRUCTURE];    
+  chord *= attv_structure;
+  // if (chord == 0) chord += attv_structure;
+  float mode = adc_lp_[ADC_CHANNEL_POT_STRUCTURE];
   chord *= static_cast<float>(kNumChords - 1);
   mode *= static_cast<float>(kNumModes - 1);
+  int32_t index_offset = 7;
+  if (attv_structure < 0.f) {
+    chord *= -1;
+    index_offset = 0;
+  }
   hysteresis = chord - chord_ > 0.0f ? -0.1f : +0.1f;
   float mode_hysteresis = mode - mode_ > 0.0f ? -0.1f : +0.1f;
   chord_ = static_cast<int32_t>(chord + hysteresis + 0.5f);
   mode_ = static_cast<int32_t>(mode + mode_hysteresis + 0.5f);
+  
   CONSTRAIN(chord_, 0, kNumChords - 1);
   CONSTRAIN(mode_, 0, kNumModes - 1);
-  performance_state->chord = chord_;
+  performance_state->chord = chord_ + index_offset;
   performance_state->mode = mode_;
   
   adc_.Convert();

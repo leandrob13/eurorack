@@ -286,7 +286,7 @@ void StringSynthPart::Process(
         harmonics);
     
     // Note enough polyphony for smooth transition between chords.
-    for (int32_t i = 0; i < 3; ++i) {
+    for (int32_t i = 0; i < chord_size; ++i) {
       float n = scales[performance_state.mode][group_[group].chord][i];
       notes[i].note = n;
       notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
