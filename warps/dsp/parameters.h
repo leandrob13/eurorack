@@ -43,7 +43,7 @@ enum OscillatorShape {
 
 enum FeatureMode {
   FEATURE_MODE_LADDER_FILTER,
-  FEATURE_MODE_SVF,
+  FEATURE_MODE_DUAL_FILTER,
   FEATURE_MODE_CHEBYSCHEV,
   FEATURE_MODE_FREQUENCY_SHIFTER,
   FEATURE_MODE_BITCRUSHER,
@@ -59,6 +59,8 @@ struct Parameters {
   float modulation_parameter;
   
   // Raw parameters.
+  float raw_level_pot[2];
+  float raw_level_cv[2];
   float raw_level[2];
   float raw_algorithm_pot;
   float raw_algorithm_cv;

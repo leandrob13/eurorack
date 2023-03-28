@@ -41,9 +41,8 @@
 #include "warps/dsp/sample_rate_converter.h"
 #include "warps/dsp/vocoder.h"
 #include "warps/resources.h"
-#include "warps/dsp/filters/svf.h"
 #include "warps/dsp/filters/ladder_filter.h"
-#include "warps/dsp/filters/series.h"
+#include "warps/dsp/filters/dual.h"
 
 namespace warps {
 
@@ -132,7 +131,7 @@ enum XmodAlgorithm {
   ALGORITHM_COMPARATOR_CHEBYSCHEV,
   ALGORITHM_BITCRUSHER,
   ALGORITHM_LADDER_FILTER,
-  ALGORITHM_SVF,
+  ALGORITHM_DUAL_FILTER,
   ALGORITHM_NOP,
   ALGORITHM_LAST
 };
@@ -164,6 +163,7 @@ class Modulator {
   void ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_t size);
   // void ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
@@ -183,7 +183,7 @@ class Modulator {
       x = fminf(fmaxf(x, 0.0f), 1.0f);
       
       // Compute the amplification using an exponential function
-      return expf(5.0 * (x - 1.0f));
+      return expf(5.0f * (x - 1.0f));
   }
 
   template<XmodAlgorithm algorithm_1, XmodAlgorithm algorithm_2>
