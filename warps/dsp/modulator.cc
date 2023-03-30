@@ -424,17 +424,12 @@ void Modulator::ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
-  float* oversampled_carrier = src_buffer_[0];
-  float* oversampled_modulator = src_buffer_[1];
-  float* oversampled_output = src_buffer_[0];
 
-  if (!parameters_.carrier_shape) {
-    fill(&aux_output[0], &aux_output[size], 0.0f);
-  }
+  fill(&aux_output[0], &aux_output[size], 0.0f);
 
   // Convert audio inputs to float and apply VCA/saturation (5.8% per channel)
   short* input_samples = &input->l;
-  for (int32_t i = parameters_.carrier_shape ? 1 : 0; i < 2; ++i) {
+  for (int32_t i = 0; i < 2; ++i) {  
       amplifier_[i].Process(
           parameters_.raw_level_cv[i],
           1.0f,
@@ -445,48 +440,44 @@ void Modulator::ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_
           size);
   }
 
-  src_up2_[0].Process(carrier, oversampled_carrier, size);
-  src_up2_[1].Process(modulator, oversampled_modulator, size);
-
   float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
   float timbre_exp_att = exp_amp(previous_parameters_.modulation_parameter);
-  sf.SetFreqs(timbre_exp_att * 300.0f, algo_exp_att * 3000.0f);
+  sf.SetFreqs(timbre_exp_att * 500.0f, algo_exp_att * 3000.0f);
   sf.SetResonances(previous_parameters_.raw_level_pot[0], previous_parameters_.raw_level_pot[1]);
   sf.SetDamps();
-
-  /*switch (parameters_.carrier_shape)
-  {
-    // Parallel LP and HP filters
-    case 0:
-      {
-
-      }
-      break;
-    // HP to LP
-    case 1:
-      {
-
-      }
-    default:
-      break;
-  }*/
+  sf.SetConfig(parameters_.carrier_shape);
 
   ProcessXmod<ALGORITHM_DUAL_FILTER>(
         previous_parameters_.modulation_algorithm,
         parameters_.modulation_algorithm,
         previous_parameters_.skewed_modulation_parameter(),
         parameters_.skewed_modulation_parameter(),
-        oversampled_modulator,
-        oversampled_carrier,
-        oversampled_output,
-        size * kLessOversampling);
+        carrier,
+        modulator,
+        main_output,
+        aux_output,
+        size);
 
-  src_down2_[0].Process(oversampled_output, main_output, size * kLessOversampling);
+  /*
+  float undersampled_size = size * kLessOversampling;
+  while (undersampled_size) {
+    const float x_1 = *oversampled_modulator++;
+    const float x_2 = *oversampled_carrier++;
+    float res = sf.Process(x_1, x_2);
+    if (sf.Config() == PARALLEL) {
+      *oversampled_output++ = sf.High(); 
+      *aux_output++ = sf.Low();
+    }
+    else {
+      *oversampled_output++ = res;
+      *aux_output++ = res;
+    }
+    undersampled_size--;
+  }*/
 
-  // Convert back to integer and clip.
   while (size--) {
     output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
-    output->r = Clip16(static_cast<int32_t>(*aux_output * 16384.0f));
+    output->r = Clip16(static_cast<int32_t>(*aux_output * 32768.0f)); //16384.0f
     ++main_output;
     ++aux_output;
     ++output;
@@ -622,9 +613,9 @@ void Modulator::ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t 
         mod_1,
         mod_2,
         carrier,
-  modulator,
+        modulator,
         main_output,
-  aux_output,
+        aux_output,
         size);
 
   // Convert back to integer and clip.
@@ -876,6 +867,12 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
   
   case FEATURE_MODE_DUAL_FILTER:
     ProcessSeriesFilter(input, output, size);
+    /*{
+      float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
+      mlf.SetRes(previous_parameters_.modulation_parameter / 5.0f);
+      mlf.SetFreq(algo_exp_att * 3000.0f);
+      Process1<ALGORITHM_LADDER_FILTER>(input, output, size);
+    }*/
     break;
 
   case FEATURE_MODE_CHEBYSCHEV:
@@ -970,9 +967,18 @@ inline float Modulator::Xmod<ALGORITHM_LADDER_FILTER>(
 /* static */
 template<>
 inline float Modulator::Xmod<ALGORITHM_DUAL_FILTER>(
-    float x_1, float x_2, float p_1, float p_2) {
-  float sum = x_1 + x_2;
-  return sf.Process(sum);
+    float x_1, float x_2, float p_1, float p_2, float *out_2) {
+  float out = 0.0f;
+  float res = sf.Process(x_1, x_2);
+    if (sf.Config() == PARALLEL) {
+      out = sf.High(); 
+      *out_2 = sf.Low();
+    }
+    else {
+      out = res;
+      *out_2 = res;
+    }
+  return out;
 }
 
 /* static */

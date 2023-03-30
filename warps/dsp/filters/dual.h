@@ -5,13 +5,17 @@
 #include <stdint.h>
 #include <math.h>
 
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define PI_F 3.1415927410125732421875f
+
 namespace warps
 {
 
 typedef enum Configuration {
     PARALLEL,
     HP_TO_LP,
-    LP_TO_HP
+    LP_TO_HP,
+    DUAL_BAND
 } Configuration;
 
 typedef struct FilterParams {
@@ -49,26 +53,9 @@ class SeriesFilter
     /** 
         Process the input signal, updating all of the outputs.
     */
+    float Process(float in1, float in2);
+
     float Process(float in);
-
-    void ProcessParams(float in, FilterParams *p);
-
-    /** sets the frequency of the cutoff frequency. 
-        f must be between 0.0 and sample_rate / 3
-    */
-    void SetFreq(float f, FilterParams *p);
-
-    /** sets the resonance of the filter.
-        Must be between 0.0 and 1.0 to ensure stability.
-    */
-    void SetRes(float r, FilterParams *p);
-
-    /** sets the drive of the filter 
-        affects the response of the resonance of the filter
-    */
-    void SetDrive(float d, FilterParams *p);
-
-    void SetDamp(FilterParams *p);
 
     void SetFreqs(float fh, float fl) {
         SetFreq(fh, &paramsH);
@@ -85,6 +72,56 @@ class SeriesFilter
         SetDamp(&paramsL);
     }
 
+    void SetConfig(int32_t value) {
+        switch (value)
+        {
+        case 0:
+            config = PARALLEL;
+            break;
+        case 1:
+            config = HP_TO_LP;
+            break;
+        case 2:
+            config = LP_TO_HP;
+            break;
+        case 3:
+            config = DUAL_BAND;
+            break;
+        default:
+            config = PARALLEL;
+            break;
+        }
+    }
+
+    float High() {
+        return paramsH.high_;
+    }
+
+    float Low() {
+        return paramsL.low_;
+    }
+
+    Configuration Config() {
+        return config;
+    }
+
+  private:
+    FilterParams paramsL, paramsH;
+    Configuration config;
+
+    void ProcessParams(float in, FilterParams *p) {
+        // first pass
+        Pass(in, p);
+        // take first sample of output
+        p->out_low_   = 0.5f * p->low_;
+        p->out_high_  = 0.5f * p->high_;
+        // second pass
+        Pass(in, p);
+        // average second pass outputs
+        p->out_low_ += 0.5f * p->low_;
+        p->out_high_ += 0.5f * p->high_;
+    }
+
     void Pass(float in, FilterParams *p) {
         p->notch_ = in - p->damp_ * p->band_;
         p->low_   = p->low_ + p->freq_ * p->band_;
@@ -92,13 +129,31 @@ class SeriesFilter
         p->band_  = p->freq_ * p->high_ + p->band_ - p->drive_ * p->band_ * p->band_ * p->band_;
     }
 
-    inline float fclamp(float in, float min, float max)
-    {
-        return fmin(fmax(in, min), max);
+    void SetFreq(float f, FilterParams *p) {
+        p->fc_ = fclamp(f, 1.0e-6, p->fc_max_);
+        // Set Internal Frequency for fc_
+        p->freq_ = 2.0f * sinf(PI_F * MIN(0.2f, p->fc_ / (p->sr_ * 2.0f))); // fs*2 because double sampled
     }
 
-  private:
-    FilterParams paramsL, paramsH;
+    void SetRes(float r, FilterParams *p) {
+        p->res_      = fclamp(r, 0.f, 1.0f);
+        p->drive_ = p->pre_drive_ * p->res_;
+    }
+
+    void SetDrive(float d, FilterParams *p) {
+        float drv  = fclamp(d * 0.1f, 0.f, 1.f);
+        p->pre_drive_ = drv;
+        p->drive_     = p->pre_drive_ * p->res_;
+    }
+
+    void SetDamp(FilterParams *p) {
+        float x = expf(-5.0f * p->res_);
+        p->damp_ = MIN(2.0f * x, MIN(2.0f, 2.0f / p->freq_ - p->freq_ * 0.5f));
+    }
+
+    inline float fclamp(float in, float min, float max) {
+        return fmin(fmax(in, min), max);
+    }
 };
 
 } // namespace warps
