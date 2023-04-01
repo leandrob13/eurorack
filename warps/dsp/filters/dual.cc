@@ -4,54 +4,45 @@ using namespace warps;
 
 void SeriesFilter::Init(float sample_rate)
 {
-    paramsH.Init(sample_rate);
+    paramsR.Init(sample_rate);
     paramsL.Init(sample_rate);
-    config = HP_TO_LP;
+    config = LP_HP;
 }
 
-float SeriesFilter::Process(float in) {
-    ProcessParams(in, &paramsH);
-    ProcessParams(paramsH.out_high_, &paramsL);
-    return paramsL.out_low_;
-}
-
-float SeriesFilter::Process(float in1, float in2)
+float* SeriesFilter::Process(float inL, float inR)
 {
-    float out = 0.0f;
+    static float out[2];
+    ProcessParams(inR, &paramsR);
+    ProcessParams(inL, &paramsL);
     switch (config) {
-        case PARALLEL:
+        case LP_HP:
             {
-                ProcessParams(in1, &paramsH);
-                ProcessParams(in2, &paramsL);
-                out = paramsH.out_high_ + paramsL.out_low_;
+                out[0] = paramsL.out_low_;
+                out[1] = paramsR.out_high_;
             }
             break;
-        case HP_TO_LP:
+        case LP_N:
             {
-                ProcessParams(in1 + in2, &paramsH);
-                ProcessParams(paramsH.out_high_, &paramsL);
-                out = paramsL.out_low_;
+                out[0] = paramsL.out_low_;
+                out[1] = paramsR.out_notch_;
             }
             break;
-        case LP_TO_HP:
+        case BP_HP:
             {
-                ProcessParams(in1 + in2, &paramsL);
-                ProcessParams(paramsL.out_low_, &paramsH);
-                out = paramsH.out_high_;
+                out[0] = paramsL.out_band_;
+                out[1] = paramsR.out_high_;
             }
             break;
-        case DUAL_BAND:
+        case BP_BP:
             {
-                ProcessParams(in1, &paramsH);
-                ProcessParams(in2, &paramsL);
-                out = paramsH.band_ + paramsL.band_;
+                out[0] = paramsL.out_band_;
+                out[1] = paramsR.out_band_;
             }
             break;
         default:
             {
-                ProcessParams(in1 + in2, &paramsH);
-                ProcessParams(paramsH.out_high_, &paramsL);
-                out = paramsL.out_low_;
+                out[0] = paramsL.out_low_;
+                out[1] = paramsR.out_high_;
             }
             break;
     }

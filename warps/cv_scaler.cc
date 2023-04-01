@@ -146,7 +146,7 @@ void CvScaler::Read(Parameters* p) {
 
 
   // Raw levels
-  /*for (int32_t i = 0; i < 2; ++i) {
+  for (int32_t i = 0; i < 2; ++i) {
     float level_pot = lp_state_[ADC_LEVEL_1_POT + i];
     p->raw_level_pot[i] = level_pot;
     CONSTRAIN(p->raw_level_pot[0], 0.0f, 1.0f);
@@ -158,31 +158,7 @@ void CvScaler::Read(Parameters* p) {
     float level_value = level_pot * level_cv * 1.6f;
     CONSTRAIN(level_value, 0.0f, 1.0f);
     p->raw_level[i] = level_value;
-  }*/
-
-  float level_1_pot = lp_state_[ADC_LEVEL_1_POT];
-  p->raw_level_pot[0] = level_1_pot;
-  CONSTRAIN(p->raw_level_pot[0], 0.0f, 1.0f);
-
-  float level_1_cv = calibration_data_->offset[ADC_LEVEL_1_CV] - lp_state_[ADC_LEVEL_1_CV];
-  p->raw_level_cv[0] = level_1_cv * 1.6f;
-  CONSTRAIN(p->raw_level_cv[0], 0.0f, 1.0f);
-
-  float level_1_value = level_1_pot * level_1_cv * 1.6f;
-  CONSTRAIN(level_1_value, 0.0f, 1.0f);
-  p->raw_level[0] = level_1_value;
-
-  float level_2_pot = lp_state_[ADC_LEVEL_2_POT];
-  p->raw_level_pot[1] = level_2_pot;
-  CONSTRAIN(p->raw_level_pot[1], 0.0f, 1.0f);
-
-  float level_2_cv = calibration_data_->offset[ADC_LEVEL_2_CV] - lp_state_[ADC_LEVEL_2_CV];
-  p->raw_level_cv[1] = level_2_cv * 1.6f;
-  CONSTRAIN(p->raw_level_cv[1], 0.0f, 1.0f);
-
-  float level_2_value = level_2_pot * level_2_cv * 1.6f;
-  CONSTRAIN(level_2_value, 0.0f, 1.0f);
-  p->raw_level[1] = level_2_value;
+  }
 
   // Internal oscillator parameters.
   float note;

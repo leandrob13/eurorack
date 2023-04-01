@@ -162,8 +162,7 @@ class Modulator {
   void ProcessVocoder(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
   inline const Parameters& parameters() { return parameters_; }
@@ -180,9 +179,8 @@ class Modulator {
   {
       // Clamp x to the range [0, 1]
       x = fminf(fmaxf(x, 0.0f), 1.0f);
-      
       // Compute the amplification using an exponential function
-      return expf(4.0f * (x - 1.0f));
+      return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
   }
 
   template<XmodAlgorithm algorithm_1, XmodAlgorithm algorithm_2>

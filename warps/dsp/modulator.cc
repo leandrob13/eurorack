@@ -419,7 +419,7 @@ void Modulator::ProcessMeta(
 }
 
 
-void Modulator::ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_t size) {
+void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
@@ -442,10 +442,11 @@ void Modulator::ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_
 
   float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
   float timbre_exp_att = exp_amp(previous_parameters_.modulation_parameter);
-  sf.SetFreqs(timbre_exp_att * 500.0f, algo_exp_att * 3000.0f);
+  sf.SetFreqs(algo_exp_att, timbre_exp_att);
   sf.SetResonances(previous_parameters_.raw_level_pot[0], previous_parameters_.raw_level_pot[1]);
   sf.SetDamps();
-  sf.SetConfig(parameters_.carrier_shape);
+  Configuration config = static_cast<Configuration>(parameters_.carrier_shape);
+  sf.SetConfig(config);
 
   ProcessXmod<ALGORITHM_DUAL_FILTER>(
         previous_parameters_.modulation_algorithm,
@@ -457,23 +458,6 @@ void Modulator::ProcessSeriesFilter(ShortFrame* input, ShortFrame* output, size_
         main_output,
         aux_output,
         size);
-
-  /*
-  float undersampled_size = size * kLessOversampling;
-  while (undersampled_size) {
-    const float x_1 = *oversampled_modulator++;
-    const float x_2 = *oversampled_carrier++;
-    float res = sf.Process(x_1, x_2);
-    if (sf.Config() == PARALLEL) {
-      *oversampled_output++ = sf.High(); 
-      *aux_output++ = sf.Low();
-    }
-    else {
-      *oversampled_output++ = res;
-      *aux_output++ = res;
-    }
-    undersampled_size--;
-  }*/
 
   while (size--) {
     output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
@@ -859,20 +843,14 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     {
       float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
       mlf.SetRes(previous_parameters_.modulation_parameter / 5.0f);
-      mlf.SetFreq(algo_exp_att * 3000.0f);
+      mlf.SetFreq(algo_exp_att * 4000.0f);
       Process1<ALGORITHM_LADDER_FILTER>(input, output, size);
     }
     break;
 
   
   case FEATURE_MODE_DUAL_FILTER:
-    ProcessSeriesFilter(input, output, size);
-    /*{
-      float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
-      mlf.SetRes(previous_parameters_.modulation_parameter / 5.0f);
-      mlf.SetFreq(algo_exp_att * 3000.0f);
-      Process1<ALGORITHM_LADDER_FILTER>(input, output, size);
-    }*/
+    ProcessDualFilter(input, output, size);
     break;
 
   case FEATURE_MODE_CHEBYSCHEV:
@@ -968,17 +946,9 @@ inline float Modulator::Xmod<ALGORITHM_LADDER_FILTER>(
 template<>
 inline float Modulator::Xmod<ALGORITHM_DUAL_FILTER>(
     float x_1, float x_2, float p_1, float p_2, float *out_2) {
-  float out = 0.0f;
-  float res = sf.Process(x_1, x_2);
-    if (sf.Config() == PARALLEL) {
-      out = sf.High(); 
-      *out_2 = sf.Low();
-    }
-    else {
-      out = res;
-      *out_2 = res;
-    }
-  return out;
+  float* out = sf.Process(x_1, x_2);
+  *out_2 = out[1];  
+  return out[0];
 }
 
 /* static */

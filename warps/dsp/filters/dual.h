@@ -12,16 +12,16 @@ namespace warps
 {
 
 typedef enum Configuration {
-    PARALLEL,
-    HP_TO_LP,
-    LP_TO_HP,
-    DUAL_BAND
+    LP_HP,
+    LP_N,
+    BP_HP,
+    BP_BP
 } Configuration;
 
 typedef struct FilterParams {
     float res_, damp_;
     float notch_, low_, high_, band_;
-    float out_low_, out_high_;
+    float out_low_, out_high_, out_notch_, out_band_;
     float pre_drive_, drive_;
     float fc_, freq_, sr_, fc_max_;
 
@@ -30,7 +30,7 @@ typedef struct FilterParams {
         fc_        = 200.0f;
         res_       = 0.1f;
         drive_     = 0.5f;
-        pre_drive_ = 0.5f; // Adjust this to see effects on resonance
+        pre_drive_ = 0.75f; // Adjust this to see effects on resonance
         freq_      = 500.0f;
         damp_      = 0.0f;
         notch_     = 0.0f;
@@ -50,63 +50,63 @@ class SeriesFilter
     
     void Init(float sample_rate);
 
-    /** 
-        Process the input signal, updating all of the outputs.
-    */
-    float Process(float in1, float in2);
+    float* Process(float inL, float inR);
 
-    float Process(float in);
-
-    void SetFreqs(float fh, float fl) {
-        SetFreq(fh, &paramsH);
-        SetFreq(fl, &paramsL);
+    void SetFreqs(float fl, float fr) {
+        float l_factor;
+        float r_factor;
+        switch (config) {
+            case LP_HP:
+                {
+                    l_factor = 4000.0f;
+                    r_factor = 600.0f;
+                }
+                break;
+            case LP_N:
+                {
+                    l_factor = 4000.0f;
+                    r_factor = 1500.0f;
+                }
+                break;
+            case BP_HP:
+                {
+                    l_factor = 5000.0f;
+                    r_factor = 600.0f;
+                }
+                break;
+            case BP_BP:
+                {
+                    l_factor = 5000.0f;
+                    r_factor = 5000.0f;
+                }
+                break;
+            default:
+                {
+                    l_factor = 4000.0f;
+                    r_factor = 600.0f;
+                }
+                break;
+        }
+        SetFreq(fl * l_factor, &paramsL);
+        SetFreq(fr * r_factor, &paramsR);
     }
 
-    void SetResonances(float rh, float rl) {
-        SetRes(rh, &paramsH);
+    void SetResonances(float rl, float rr) {
         SetRes(rl, &paramsL);
+        SetRes(rr, &paramsR);
     }
 
     void SetDamps() {
-        SetDamp(&paramsH);
         SetDamp(&paramsL);
+        SetDamp(&paramsR);
     }
 
-    void SetConfig(int32_t value) {
-        switch (value)
-        {
-        case 0:
-            config = PARALLEL;
-            break;
-        case 1:
-            config = HP_TO_LP;
-            break;
-        case 2:
-            config = LP_TO_HP;
-            break;
-        case 3:
-            config = DUAL_BAND;
-            break;
-        default:
-            config = PARALLEL;
-            break;
-        }
-    }
-
-    float High() {
-        return paramsH.high_;
-    }
-
-    float Low() {
-        return paramsL.low_;
-    }
-
-    Configuration Config() {
-        return config;
+    void SetConfig(Configuration value) {
+        config = value;
     }
 
   private:
-    FilterParams paramsL, paramsH;
+    FilterParams paramsL, paramsR;
     Configuration config;
 
     void ProcessParams(float in, FilterParams *p) {
@@ -115,11 +115,15 @@ class SeriesFilter
         // take first sample of output
         p->out_low_   = 0.5f * p->low_;
         p->out_high_  = 0.5f * p->high_;
+        p->out_notch_ = 0.5f * p->notch_;
+        p->out_band_  = 0.5f * p->band_;
         // second pass
         Pass(in, p);
         // average second pass outputs
         p->out_low_ += 0.5f * p->low_;
         p->out_high_ += 0.5f * p->high_;
+        p->out_notch_ += 0.5f * p->notch_;
+        p->out_band_ += 0.5f * p->band_;
     }
 
     void Pass(float in, FilterParams *p) {
@@ -138,12 +142,6 @@ class SeriesFilter
     void SetRes(float r, FilterParams *p) {
         p->res_      = fclamp(r, 0.f, 1.0f);
         p->drive_ = p->pre_drive_ * p->res_;
-    }
-
-    void SetDrive(float d, FilterParams *p) {
-        float drv  = fclamp(d * 0.1f, 0.f, 1.f);
-        p->pre_drive_ = drv;
-        p->drive_     = p->pre_drive_ * p->res_;
     }
 
     void SetDamp(FilterParams *p) {
