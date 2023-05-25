@@ -41,9 +41,7 @@ namespace warps {
 using namespace std;
 using namespace stmlib;
 
-const float kXmodCarrierGain = 0.5f;
-
-void Modulator::Init(float sample_rate) {
+void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   bypass_ = false;
   feature_mode_ = FEATURE_MODE_META;
 
@@ -62,6 +60,7 @@ void Modulator::Init(float sample_rate) {
   vocoder_.Init(sample_rate);
   mlf.Init(sample_rate);
   sf.Init(sample_rate);
+  reverb.Init(reverb_buffer);
 
   previous_parameters_.carrier_shape = 0;
   previous_parameters_.channel_drive[0] = 0.0f;
@@ -469,6 +468,57 @@ void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t 
   previous_parameters_ = parameters_;
 }
 
+void Modulator::ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size) {
+  float* carrier = buffer_[0];
+  float* modulator = buffer_[1];
+  float* main_output = buffer_[0];
+  float* aux_output = buffer_[2];
+
+  fill(&aux_output[0], &aux_output[size], 0.0f);
+
+  // Convert audio inputs to float and apply VCA/saturation (5.8% per channel)
+  short* input_samples = &input->l;
+  for (int32_t i = 0; i < 2; ++i) {  
+      amplifier_[i].Process(
+          parameters_.raw_level_cv[i],
+          1.0f,
+          input_samples + i,
+          buffer_[i],
+          aux_output,
+          2,
+          size);
+  }
+
+  reverb.set_diffusion(previous_parameters_.raw_algorithm);//(0.625f);
+  reverb.set_time(0.5f + 0.49f * previous_parameters_.modulation_parameter);
+  reverb.set_amount(previous_parameters_.raw_level_pot[0] * 0.75f);
+  
+  reverb.set_input_gain(0.2f);
+  reverb.set_lp(previous_parameters_.raw_level_pot[1]);//(0.6f);
+
+  ProcessXmod<ALGORITHM_REVERB>(
+        previous_parameters_.modulation_algorithm,
+        parameters_.modulation_algorithm,
+        previous_parameters_.skewed_modulation_parameter(),
+        parameters_.skewed_modulation_parameter(),
+        carrier,
+        modulator,
+        main_output,
+        aux_output,
+        size);
+
+  reverb.Process(main_output, aux_output, size);
+
+  while (size--) {
+    output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
+    output->r = Clip16(static_cast<int32_t>(*aux_output * 32768.0f)); //16384.0f
+    ++main_output;
+    ++aux_output;
+    ++output;
+  }
+  previous_parameters_ = parameters_;
+}
+
 template<XmodAlgorithm algorithm>
 void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
@@ -497,6 +547,7 @@ void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
   }
 
   // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
+  //RenderCarrier(input, carrier, aux_output, size);
   if (parameters_.carrier_shape) {
     // Scale phase-modulation input.
     for (size_t i = 0; i < size; ++i) {
@@ -853,10 +904,8 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessDualFilter(input, output, size);
     break;
 
-  case FEATURE_MODE_CHEBYSCHEV:
-    parameters_.modulation_parameter = 0.7f +
-    parameters_.modulation_parameter * 0.3f;
-    Process1<ALGORITHM_CHEBYSCHEV>(input, output, size);
+  case FEATURE_MODE_REVERB:
+    ProcessReverb(input, output, size);
     break;
 
   case FEATURE_MODE_FREQUENCY_SHIFTER:
@@ -940,6 +989,15 @@ template<>
 inline float Modulator::Xmod<ALGORITHM_LADDER_FILTER>(
     float x_1, float x_2, float p_1, float p_2) {
   return mlf.Process(x_1 + x_2);
+}
+
+/* static */
+template<>
+inline float Modulator::Xmod<ALGORITHM_REVERB>(
+    float x_1, float x_2, float p_1, float p_2, float *out_2) {
+  float res = x_1 + x_2;     
+  *out_2 = res;
+  return res;
 }
 
 /* static */

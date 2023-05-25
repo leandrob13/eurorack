@@ -43,6 +43,7 @@
 #include "warps/resources.h"
 #include "warps/dsp/filters/ladder_filter.h"
 #include "warps/dsp/filters/dual.h"
+#include "warps/dsp/fx/reverb.h"
 
 namespace warps {
 
@@ -50,6 +51,7 @@ const size_t kMaxBlockSize = 96;
 const size_t kOversampling = 6;
 const size_t kLessOversampling = 4;
 const size_t kNumOscillators = 1;
+const float kXmodCarrierGain = 0.5f;
 
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
@@ -132,12 +134,14 @@ enum XmodAlgorithm {
   ALGORITHM_BITCRUSHER,
   ALGORITHM_LADDER_FILTER,
   ALGORITHM_DUAL_FILTER,
+  ALGORITHM_REVERB,
   ALGORITHM_NOP,
   ALGORITHM_LAST
 };
 
 static MoogLadderFilter mlf;
 static SeriesFilter sf;
+static Reverb reverb;
 
 class Modulator {
  public:
@@ -154,7 +158,7 @@ class Modulator {
   Modulator() { }
   ~Modulator() { }
 
-  void Init(float sample_rate);
+  void Init(float sample_rate, uint16_t* reverb_buffer);
   void Process(ShortFrame* input, ShortFrame* output, size_t size);
   template<XmodAlgorithm algorithm>
   void Process1(ShortFrame* input, ShortFrame* output, size_t size);
@@ -163,6 +167,7 @@ class Modulator {
   void ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
   inline const Parameters& parameters() { return parameters_; }
@@ -181,6 +186,27 @@ class Modulator {
       x = fminf(fmaxf(x, 0.0f), 1.0f);
       // Compute the amplification using an exponential function
       return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
+  }
+
+  void RenderCarrier(ShortFrame* input, float* carrier, float* aux_output, size_t size) {
+    if (parameters_.carrier_shape) {
+    // Scale phase-modulation input.
+      for (size_t i = 0; i < size; ++i) {
+        internal_modulation_[i] = static_cast<float>(input[i].l) / 32768.0f;
+      }
+
+      OscillatorShape xmod_shape = static_cast<OscillatorShape>(
+          parameters_.carrier_shape - 1);
+      xmod_oscillator_.Render(
+            xmod_shape,
+            parameters_.note,
+            internal_modulation_,
+            aux_output,
+            size);
+      for (size_t i = 0; i < size; ++i) {
+        carrier[i] = aux_output[i] * kXmodCarrierGain;
+      }
+    }
   }
 
   template<XmodAlgorithm algorithm_1, XmodAlgorithm algorithm_2>

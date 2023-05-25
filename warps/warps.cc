@@ -43,6 +43,9 @@ DebugPort debug_port;
 Modulator modulator;
 Settings settings;
 Ui ui;
+float kSampleRate = 48000.0f; //96000.0f
+
+uint16_t reverb_buffer[32768] __attribute__ ((section (".ccmdata")));
 
 int __errno;
 
@@ -88,7 +91,7 @@ void Init() {
   version.Init();
 
   // Init modulator.
-  modulator.Init(96000.0f);
+  modulator.Init(kSampleRate, reverb_buffer);
   settings.Init();
   cv_scaler.Init(settings.mutable_calibration_data());
   
