@@ -35,6 +35,13 @@
 
 namespace warps {
 
+enum ReverbType {
+  CAVEMAN,
+  RINGS,
+  CLOUDS,
+  ELEMENTS
+};
+
 class Reverb {
  public:
   Reverb() { }
@@ -46,6 +53,9 @@ class Reverb {
     engine_.SetLFOFrequency(LFO_2, 0.3f / 48000.0f);
     lp_ = 0.7f;
     diffusion_ = 0.625f;
+    input_gain_ = 0.2f;
+    frozen_ = false;
+    type_ = CAVEMAN;
   }
   
   void Process(float* left, float* right, size_t size) {
@@ -83,15 +93,19 @@ class Reverb {
 
     float lp_1 = lp_decay_1_;
     float lp_2 = lp_decay_2_;
+    bool is_clouds = type_ == CLOUDS;
+    bool is_elements = type_ == ELEMENTS;
 
     while (size--) {
       float wet;
       float apout = 0.0f;
       engine_.Start(&c);
       
-      // Smear AP1 inside the loop.
-      //c.Interpolate(ap1, 10.0f, LFO_1, 80.0f, 1.0f);
-      //c.Write(ap1, 100, 0.0f);
+      if (is_clouds || is_elements) {
+        // Smear AP1 inside the loop.
+        c.Interpolate(ap1, 10.0f, LFO_1, is_clouds ? 60.0f : 80.0f, 1.0f);
+        c.Write(ap1, 100, 0.0f);
+      }
       
       c.Read(*left + *right, gain);
 
@@ -108,7 +122,11 @@ class Reverb {
       
       // Main reverb loop.
       c.Load(apout);
-      c.Interpolate(del2, 6261.0f, LFO_2, 50.0f, krt);
+      if (is_clouds || is_elements) {
+        c.Interpolate(del2, is_clouds ? 4680.0f : 6211.0f, LFO_2, 100.0f, krt);
+      } else {
+        c.Interpolate(del2, 6261.0f, LFO_2, 50.0f, krt);
+      }
       c.Lp(lp_1, klp);
       c.Read(dap1a TAIL, -kap);
       c.WriteAllPass(dap1a, kap);
@@ -120,7 +138,11 @@ class Reverb {
       *left += (wet - *left) * amount;
 
       c.Load(apout);
-      c.Interpolate(del1, 4460.0f, LFO_1, 40.0f, krt);
+      if (is_clouds || is_elements) {
+        c.Read(del1 TAIL, krt);
+      } else {
+        c.Interpolate(del1, 4460.0f, LFO_1, 40.0f, krt);
+      }
       c.Lp(lp_2, klp);
       c.Read(dap2a TAIL, kap);
       c.WriteAllPass(dap2a, -kap);
@@ -140,23 +162,77 @@ class Reverb {
   }
   
   inline void set_amount(float amount) {
-    amount_ = amount;
+    switch (type_)
+    {
+      case CAVEMAN:
+        amount_ = 0.75f * amount;
+        break;
+      case RINGS:
+        amount_ = 0.1f + amount * 0.5f;
+        break;
+      case CLOUDS:
+        amount_ = 0.54f * amount;
+        break;
+      case ELEMENTS:
+        set_input_gain(amount <= 0.2f ? 0.2f : amount);
+        break;
+      default:
+        break;
+    }
   }
   
   inline void set_input_gain(float input_gain) {
-    input_gain_ = input_gain;
+    input_gain_ = (frozen_ && type_ == ELEMENTS) ? 0.0f : input_gain;
   }
 
   inline void set_time(float reverb_time) {
-    reverb_time_ = reverb_time;
+    frozen_ = false;
+    switch (type_)
+    {
+      case CAVEMAN:
+        reverb_time_ = 0.5f + 0.49f * reverb_time;
+        break;
+      case RINGS:
+        reverb_time_ = 0.35f + 0.63f * reverb_time;
+        break;
+      case CLOUDS:
+        reverb_time_ = 0.35f + 0.63f * reverb_time;
+        break;
+      case ELEMENTS:  
+        {
+          frozen_ = reverb_time >= 0.9f;
+          amount_ = reverb_time >= 0.4f ? 0.4f : reverb_time;
+          reverb_time_ = frozen_ ? 1.0f : 0.35f + 1.2f * amount_;
+        }
+        break;
+      default:
+        break;
+    }
   }
   
   inline void set_diffusion(float diffusion) {
-    diffusion_ = diffusion;
+    diffusion_ = frozen_ ? 0.625f : diffusion;
   }
   
   inline void set_lp(float lp) {
-    lp_ = lp;
+    switch (type_) {
+      case RINGS:
+        lp_ = 0.3f + lp * 0.6f;
+        break;
+      case ELEMENTS:
+        lp_ = frozen_ ? 1.0f : lp;
+        break;
+      case CLOUDS:
+        lp_ = 0.6f + 0.37f * lp;
+        break;
+      default:
+        lp_ = lp;
+        break;
+    }
+  }
+
+  inline void set_type(ReverbType type) {
+    type_ = type;
   }
   
   inline void Clear() {
@@ -172,6 +248,8 @@ class Reverb {
   float reverb_time_;
   float diffusion_;
   float lp_;
+  bool frozen_;
+  ReverbType type_;
   
   float lp_decay_1_;
   float lp_decay_2_;

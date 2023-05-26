@@ -489,12 +489,13 @@ void Modulator::ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size
           size);
   }
 
-  reverb.set_diffusion(previous_parameters_.raw_algorithm);//(0.625f);
-  reverb.set_time(0.5f + 0.49f * previous_parameters_.modulation_parameter);
-  reverb.set_amount(previous_parameters_.raw_level_pot[0] * 0.75f);
-  
+  ReverbType reverb_type = static_cast<ReverbType>(parameters_.carrier_shape);
+  reverb.set_type(reverb_type);
   reverb.set_input_gain(0.2f);
-  reverb.set_lp(previous_parameters_.raw_level_pot[1]);//(0.6f);
+  reverb.set_amount(previous_parameters_.raw_level_pot[0]);
+  reverb.set_diffusion(previous_parameters_.raw_algorithm);
+  reverb.set_lp(previous_parameters_.raw_level_pot[1]);
+  reverb.set_time(previous_parameters_.modulation_parameter);
 
   ProcessXmod<ALGORITHM_REVERB>(
         previous_parameters_.modulation_algorithm,
@@ -916,7 +917,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessBitcrusher(input, output, size);
     break;
 
-  case FEATURE_MODE_COMPARATOR:
+  case FEATURE_MODE_COMPARATOR: // Chorus
     Process1<ALGORITHM_COMPARATOR_CHEBYSCHEV>(input, output, size);
     break;
 
