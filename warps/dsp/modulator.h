@@ -44,6 +44,7 @@
 #include "warps/dsp/filters/ladder_filter.h"
 #include "warps/dsp/filters/dual.h"
 #include "warps/dsp/fx/reverb.h"
+#include "warps/dsp/fx/chorus.h"
 
 namespace warps {
 
@@ -128,13 +129,14 @@ enum XmodAlgorithm {
   ALGORITHM_RING_MODULATION,
   ALGORITHM_XOR,
   ALGORITHM_COMPARATOR,
-  ALGORITHM_COMPARATOR8,
-  ALGORITHM_CHEBYSCHEV,
-  ALGORITHM_COMPARATOR_CHEBYSCHEV,
+  //ALGORITHM_COMPARATOR8,
+  //ALGORITHM_CHEBYSCHEV,
+  //ALGORITHM_COMPARATOR_CHEBYSCHEV,
   ALGORITHM_BITCRUSHER,
   ALGORITHM_LADDER_FILTER,
   ALGORITHM_DUAL_FILTER,
-  ALGORITHM_REVERB,
+  ALGORITHM_FX,
+  //ALGORITHM_CHORUS,
   ALGORITHM_NOP,
   ALGORITHM_LAST
 };
@@ -142,6 +144,7 @@ enum XmodAlgorithm {
 static MoogLadderFilter mlf;
 static SeriesFilter sf;
 static Reverb reverb;
+//static Chorus chorus;
 
 class Modulator {
  public:
@@ -168,6 +171,7 @@ class Modulator {
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
+  //void ProcessChorus(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
   inline const Parameters& parameters() { return parameters_; }

@@ -55,6 +55,7 @@ class Reverb {
     diffusion_ = 0.625f;
     input_gain_ = 0.2f;
     frozen_ = false;
+    feedback_ = 0.0f;
     type_ = CAVEMAN;
   }
   
@@ -171,7 +172,12 @@ class Reverb {
         amount_ = 0.1f + amount * 0.5f;
         break;
       case CLOUDS:
-        amount_ = 0.54f * amount;
+        {
+          float reverb_amount = amount * 0.95f;
+          reverb_amount += feedback_ * (2.0f - feedback_);
+          CONSTRAIN(reverb_amount, 0.0f, 1.0f);
+          amount_ = 0.54f * reverb_amount;
+        }
         break;
       case ELEMENTS:
         set_input_gain(amount <= 0.2f ? 0.2f : amount);
@@ -200,7 +206,7 @@ class Reverb {
         break;
       case ELEMENTS:  
         {
-          frozen_ = reverb_time >= 0.9f;
+          frozen_ = reverb_time >= 0.95f;
           amount_ = reverb_time >= 0.4f ? 0.4f : reverb_time;
           reverb_time_ = frozen_ ? 1.0f : 0.35f + 1.2f * amount_;
         }
@@ -223,7 +229,10 @@ class Reverb {
         lp_ = frozen_ ? 1.0f : lp;
         break;
       case CLOUDS:
-        lp_ = 0.6f + 0.37f * lp;
+        {
+          feedback_ = lp;
+          lp_ = 0.6f + 0.37f * feedback_;
+        }
         break;
       default:
         lp_ = lp;
@@ -248,6 +257,7 @@ class Reverb {
   float reverb_time_;
   float diffusion_;
   float lp_;
+  float feedback_;
   bool frozen_;
   ReverbType type_;
   

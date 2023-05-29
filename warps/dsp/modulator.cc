@@ -61,6 +61,7 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   mlf.Init(sample_rate);
   sf.Init(sample_rate);
   reverb.Init(reverb_buffer);
+  //chorus.Init(reverb_buffer);
 
   previous_parameters_.carrier_shape = 0;
   previous_parameters_.channel_drive[0] = 0.0f;
@@ -492,12 +493,12 @@ void Modulator::ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size
   ReverbType reverb_type = static_cast<ReverbType>(parameters_.carrier_shape);
   reverb.set_type(reverb_type);
   reverb.set_input_gain(0.2f);
+  reverb.set_lp(previous_parameters_.raw_level_pot[1]);
   reverb.set_amount(previous_parameters_.raw_level_pot[0]);
   reverb.set_diffusion(previous_parameters_.raw_algorithm);
-  reverb.set_lp(previous_parameters_.raw_level_pot[1]);
   reverb.set_time(previous_parameters_.modulation_parameter);
 
-  ProcessXmod<ALGORITHM_REVERB>(
+  ProcessXmod<ALGORITHM_FX>(
         previous_parameters_.modulation_algorithm,
         parameters_.modulation_algorithm,
         previous_parameters_.skewed_modulation_parameter(),
@@ -519,6 +520,76 @@ void Modulator::ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size
   }
   previous_parameters_ = parameters_;
 }
+/*
+void Modulator::ProcessChorus(ShortFrame* input, ShortFrame* output, size_t size) {
+  float* carrier = buffer_[0];
+  float* modulator = buffer_[1];
+  float* main_output = buffer_[0];
+  float* aux_output = buffer_[2];
+
+  if (!parameters_.carrier_shape) {
+    fill(&aux_output[0], &aux_output[size], 0.0f);
+  }
+
+  // Convert audio inputs to float and apply VCA/saturation (5.8% per channel)
+  short* input_samples = &input->l;
+  for (int32_t i = parameters_.carrier_shape ? 1 : 0; i < 2; ++i) {
+      amplifier_[i].Process(
+          parameters_.channel_drive[i],
+          1.0f,
+          input_samples + i,
+          buffer_[i],
+          aux_output,
+          2,
+          size);
+  }
+
+  // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
+  if (parameters_.carrier_shape) {
+    // Scale phase-modulation input.
+    for (size_t i = 0; i < size; ++i) {
+      internal_modulation_[i] = static_cast<float>(input[i].l) / 32768.0f;
+    }
+
+    OscillatorShape xmod_shape = static_cast<OscillatorShape>(
+        parameters_.carrier_shape - 1);
+    xmod_oscillator_.Render(
+          xmod_shape,
+          parameters_.note,
+          internal_modulation_,
+          aux_output,
+          size);
+    for (size_t i = 0; i < size; ++i) {
+      carrier[i] = aux_output[i] * kXmodCarrierGain;
+    }
+  }
+
+  chorus.set_amount(previous_parameters_.raw_algorithm);
+  chorus.set_depth(previous_parameters_.modulation_parameter);
+
+  ProcessXmod<ALGORITHM_FX>(
+        previous_parameters_.modulation_algorithm,
+        parameters_.modulation_algorithm,
+        previous_parameters_.skewed_modulation_parameter(),
+        parameters_.skewed_modulation_parameter(),
+        carrier,
+        modulator,
+        main_output,
+        aux_output,
+        size);
+
+  chorus.Process(main_output, aux_output, size);
+
+  while (size--) {
+    output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
+    output->r = Clip16(static_cast<int32_t>(*aux_output * 32768.0f)); //16384.0f
+    ++main_output;
+    ++aux_output;
+    ++output;
+  }
+  previous_parameters_ = parameters_;
+
+}*/
 
 template<XmodAlgorithm algorithm>
 void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
@@ -909,6 +980,10 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessReverb(input, output, size);
     break;
 
+  case FEATURE_MODE_CHORUS:
+    ProcessReverb(input, output, size);
+    break;
+
   case FEATURE_MODE_FREQUENCY_SHIFTER:
     ProcessFreqShifter(input, output, size);
     break;
@@ -917,9 +992,10 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessBitcrusher(input, output, size);
     break;
 
-  case FEATURE_MODE_COMPARATOR: // Chorus
+  /*case FEATURE_MODE_COMPARATOR: // Chorus
     Process1<ALGORITHM_COMPARATOR_CHEBYSCHEV>(input, output, size);
     break;
+  */
 
   case FEATURE_MODE_VOCODER:
     ProcessVocoder(input, output, size);
@@ -956,7 +1032,7 @@ inline float Modulator::Xmod<ALGORITHM_XFADE>(
   return x_1 * fade_in + x_2 * fade_out;
 }
 
-template<>
+/*template<>
 inline float Modulator::Mod<ALGORITHM_CHEBYSCHEV>(
     float x, float p) {
 
@@ -983,7 +1059,7 @@ inline float Modulator::Mod<ALGORITHM_CHEBYSCHEV>(
   }
 
   return (tn1 + (tn - tn1) * n) / amp;
-}
+}*/
 
 /* static */
 template<>
@@ -994,7 +1070,7 @@ inline float Modulator::Xmod<ALGORITHM_LADDER_FILTER>(
 
 /* static */
 template<>
-inline float Modulator::Xmod<ALGORITHM_REVERB>(
+inline float Modulator::Xmod<ALGORITHM_FX>(
     float x_1, float x_2, float p_1, float p_2, float *out_2) {
   float res = x_1 + x_2;     
   *out_2 = res;
@@ -1115,7 +1191,7 @@ inline float Modulator::Xmod<ALGORITHM_COMPARATOR>(
 }
 
 /* static */
-template<>
+/*template<>
 inline float Modulator::Xmod<ALGORITHM_COMPARATOR8>(
     float modulator, float carrier, float parameter) {
   float x = parameter * 6.995f;
@@ -1150,20 +1226,20 @@ inline float Modulator::Xmod<ALGORITHM_COMPARATOR8>(
   }
 
   return y_1 + (y_2 - y_1) * x_fractional;
-}
+}*/
 
 /* static */
-template<>
+/*template<>
 inline float Modulator::Xmod<ALGORITHM_COMPARATOR_CHEBYSCHEV>(
     float x_1, float x_2, float p_1, float p_2) {
 
   float x = Xmod<ALGORITHM_COMPARATOR8>(x_1, x_2, p_1);
   x = Mod<ALGORITHM_CHEBYSCHEV>(x, p_2);
   return 0.8f * x;
-}
+}*/
 
 /* static */
-template<>
+/*template<>
 inline float Modulator::Xmod<ALGORITHM_CHEBYSCHEV>(
     float x_1, float x_2, float p_1, float p_2) {
 
@@ -1192,7 +1268,7 @@ inline float Modulator::Xmod<ALGORITHM_CHEBYSCHEV>(
   x *= 0.5f;
 
   return x;
-}
+}*/
 
 /* static */
 template<>
