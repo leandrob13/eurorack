@@ -68,6 +68,9 @@ struct Parameters {
   float raw_algorithm_pot;
   float raw_algorithm_cv;
   float raw_algorithm;
+  float raw_modulation_pot;
+  float raw_modulation_cv;
+  float raw_modulation;
   float note;
 
   int32_t carrier_shape;  // 0 = external

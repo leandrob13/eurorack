@@ -134,7 +134,7 @@ void CvScaler::Read(Parameters* p) {
   }
   
   // Raw parameter mappings (no scaling).
-  // Raw algorith
+  // Raw algorithm
   p->raw_algorithm_pot = UnwrapPot(lp_state_[ADC_ALGORITHM_POT]);
   float raw_algorithm_cv = calibration_data_->offset[ADC_ALGORITHM_CV] - lp_state_[ADC_ALGORITHM_CV];
   p->raw_algorithm_cv = raw_algorithm_cv * 2.0f;
@@ -143,6 +143,16 @@ void CvScaler::Read(Parameters* p) {
   float raw_algorithm = lp_state_[ADC_ALGORITHM_POT] + raw_algorithm_cv * 2.0f;
   CONSTRAIN(raw_algorithm, 0.0f, 1.0f);
   p->raw_algorithm = raw_algorithm;
+
+  // Raw modulation
+  p->raw_modulation_pot = UnwrapPot(lp_state_[ADC_PARAMETER_POT]);
+  float raw_modulation_cv = calibration_data_->offset[ADC_PARAMETER_CV] - lp_state_[ADC_PARAMETER_CV];
+  p->raw_modulation_cv = raw_modulation_cv * 2.0f;
+  CONSTRAIN(p->raw_modulation_cv, -1.0f, 1.0f);
+
+  float raw_modulation = lp_state_[ADC_PARAMETER_POT] + raw_modulation_cv * 2.0f;
+  CONSTRAIN(raw_modulation, 0.0f, 1.0f);
+  p->raw_modulation = raw_modulation;
 
 
   // Raw levels
@@ -182,7 +192,7 @@ void CvScaler::Read(Parameters* p) {
       float pot = lp_state_[ADC_LEVEL_1_POT + i];
       p->channel_drive[i] = pot * pot;
       p->raw_level[i] = pot;
-      p->raw_level_cv[i] = 0.5f;
+      p->raw_level_cv[i] = 0.6f;
     }
   }
   if (normalization_detector_[0].normalized()) {

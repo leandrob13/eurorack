@@ -42,7 +42,7 @@
 #include "warps/dsp/vocoder.h"
 #include "warps/resources.h"
 #include "warps/dsp/filters/ladder_filter.h"
-#include "warps/dsp/filters/dual.h"
+#include "warps/dsp/filters/dual_filter.h"
 #include "warps/dsp/fx/reverb.h"
 #include "warps/dsp/fx/chorus.h"
 
@@ -142,8 +142,9 @@ enum XmodAlgorithm {
 };
 
 static MoogLadderFilter mlf;
-static SeriesFilter sf;
+//static SeriesFilter sf;
 static Reverb reverb;
+static DualFilter df;
 //static Chorus chorus;
 
 class Modulator {

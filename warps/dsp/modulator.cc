@@ -59,7 +59,8 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   quadrature_oscillator_.Init(sample_rate);
   vocoder_.Init(sample_rate);
   mlf.Init(sample_rate);
-  sf.Init(sample_rate);
+  //sf.Init(sample_rate);
+  df.Init();
   reverb.Init(reverb_buffer);
   //chorus.Init(reverb_buffer);
 
@@ -441,12 +442,10 @@ void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t 
   }
 
   float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
-  float timbre_exp_att = exp_amp(previous_parameters_.modulation_parameter);
-  sf.SetFreqs(algo_exp_att, timbre_exp_att);
-  sf.SetResonances(previous_parameters_.raw_level_pot[0], previous_parameters_.raw_level_pot[1]);
-  sf.SetDamps();
-  Configuration config = static_cast<Configuration>(parameters_.carrier_shape);
-  sf.SetConfig(config);
+  float timbre_exp_att = exp_amp(previous_parameters_.raw_modulation);
+  FilterLayout layout = static_cast<FilterLayout>(parameters_.carrier_shape);
+  df.SetLayout(layout);
+  df.SetFreqsRes(algo_exp_att, previous_parameters_.raw_level_pot[0], timbre_exp_att, previous_parameters_.raw_level_pot[1]);
 
   ProcessXmod<ALGORITHM_DUAL_FILTER>(
         previous_parameters_.modulation_algorithm,
@@ -1081,7 +1080,7 @@ inline float Modulator::Xmod<ALGORITHM_FX>(
 template<>
 inline float Modulator::Xmod<ALGORITHM_DUAL_FILTER>(
     float x_1, float x_2, float p_1, float p_2, float *out_2) {
-  float* out = sf.Process(x_1, x_2);
+  float* out = df.Process(x_1, x_2);
   *out_2 = out[1];  
   return out[0];
 }
