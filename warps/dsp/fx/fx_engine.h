@@ -26,8 +26,8 @@
 //
 // Base class for building reverb.
 
-#ifndef RINGS_DSP_FX_FX_ENGINE_H_
-#define RINGS_DSP_FX_FX_ENGINE_H_
+#ifndef WARPS_DSP_FX_FX_ENGINE_H_
+#define WARPS_DSP_FX_FX_ENGINE_H_
 
 #include <algorithm>
 
@@ -296,6 +296,6 @@ class FxEngine {
   DISALLOW_COPY_AND_ASSIGN(FxEngine);
 };
 
-}  // namespace rings
+}  // namespace warps
 
-#endif  // RINGS_DSP_FX_FX_ENGINE_H_
+#endif  // WARPS_DSP_FX_FX_ENGINE_H_

@@ -44,9 +44,10 @@
 #include "warps/dsp/filters/ladder_filter.h"
 #include "warps/dsp/filters/dual_filter.h"
 #include "warps/dsp/fx/reverb.h"
-#include "warps/dsp/fx/chorus.h"
 
 namespace warps {
+
+using namespace std;
 
 const size_t kMaxBlockSize = 96;
 const size_t kOversampling = 6;
@@ -129,23 +130,18 @@ enum XmodAlgorithm {
   ALGORITHM_RING_MODULATION,
   ALGORITHM_XOR,
   ALGORITHM_COMPARATOR,
-  //ALGORITHM_COMPARATOR8,
-  //ALGORITHM_CHEBYSCHEV,
-  //ALGORITHM_COMPARATOR_CHEBYSCHEV,
+  ALGORITHM_CHEBYSCHEV,
   ALGORITHM_BITCRUSHER,
   ALGORITHM_LADDER_FILTER,
   ALGORITHM_DUAL_FILTER,
   ALGORITHM_FX,
-  //ALGORITHM_CHORUS,
   ALGORITHM_NOP,
   ALGORITHM_LAST
 };
 
 static MoogLadderFilter mlf;
-//static SeriesFilter sf;
 static Reverb reverb;
 static DualFilter df;
-//static Chorus chorus;
 
 class Modulator {
  public:
@@ -172,7 +168,6 @@ class Modulator {
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
-  //void ProcessChorus(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
   inline const Parameters& parameters() { return parameters_; }
@@ -193,8 +188,25 @@ class Modulator {
       return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
   }
 
+  void ApplyAmplification(ShortFrame* input, float* level, float* aux_output, size_t size, bool raw_level) {
+    if (!parameters_.carrier_shape || raw_level) {
+      fill(&aux_output[0], &aux_output[size], 0.0f);
+    }
+    // Convert audio inputs to float and apply VCA/saturation (5.8% per channel)
+    short* input_samples = &input->l;
+    for (int32_t i = (parameters_.carrier_shape && !raw_level) ? 1 : 0; i < 2; ++i) {
+        amplifier_[i].Process(
+            level[i],
+            1.0f,
+            input_samples + i,
+            buffer_[i],
+            aux_output,
+            2,
+            size);
+    }
+  }
+
   void RenderCarrier(ShortFrame* input, float* carrier, float* aux_output, size_t size) {
-    if (parameters_.carrier_shape) {
     // Scale phase-modulation input.
       for (size_t i = 0; i < size; ++i) {
         internal_modulation_[i] = static_cast<float>(input[i].l) / 32768.0f;
@@ -211,7 +223,16 @@ class Modulator {
       for (size_t i = 0; i < size; ++i) {
         carrier[i] = aux_output[i] * kXmodCarrierGain;
       }
-    }
+  }
+
+  void Convert(ShortFrame* output, float* main_output, float* aux_output, float aux_gain, size_t size) {
+    while (size--) {
+    output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
+    output->r = Clip16(static_cast<int32_t>(*aux_output * aux_gain));
+    ++main_output;
+    ++aux_output;
+    ++output;
+  }
   }
 
   template<XmodAlgorithm algorithm_1, XmodAlgorithm algorithm_2>

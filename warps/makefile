@@ -41,6 +41,7 @@ PACKAGES       = warps \
 		warps/drivers \
 		warps/dsp \
 		warps/dsp/filters \
+		warps/dsp/fx \
 		stmlib/dsp \
 		stmlib/utils \
 		stmlib/system
