@@ -753,9 +753,10 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
 
   case FEATURE_MODE_LADDER_FILTER:
     {
+      float timbre_exp_att = previous_parameters_.raw_modulation;
       float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
-      mlf.SetRes(previous_parameters_.modulation_parameter / 5.0f);
-      mlf.SetFreq(algo_exp_att * 4000.0f);
+      mlf.SetRes(timbre_exp_att * 5.0f);
+      mlf.SetFreq(algo_exp_att * 1000.0f);
       Process1<ALGORITHM_LADDER_FILTER>(input, output, size);
     }
     break;
