@@ -163,11 +163,12 @@ class Modulator {
   template<XmodAlgorithm algorithm>
   void Process1(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessFreqShifter(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessVocoder(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
   inline const Parameters& parameters() { return parameters_; }
@@ -206,14 +207,14 @@ class Modulator {
     }
   }
 
-  void RenderCarrier(ShortFrame* input, float* carrier, float* aux_output, size_t size) {
+  void RenderCarrier(ShortFrame* input, float* carrier, float* aux_output, size_t size, bool exclude_sine = false) {
     // Scale phase-modulation input.
       for (size_t i = 0; i < size; ++i) {
         internal_modulation_[i] = static_cast<float>(input[i].l) / 32768.0f;
       }
 
       OscillatorShape xmod_shape = static_cast<OscillatorShape>(
-          parameters_.carrier_shape - 1);
+          parameters_.carrier_shape - (exclude_sine ? 0 : 1));
       xmod_oscillator_.Render(
             xmod_shape,
             parameters_.note,
@@ -221,7 +222,7 @@ class Modulator {
             aux_output,
             size);
       for (size_t i = 0; i < size; ++i) {
-        carrier[i] = aux_output[i] * kXmodCarrierGain;
+        carrier[i] = aux_output[i] * 0.75f;
       }
   }
 

@@ -135,7 +135,7 @@ void CvScaler::Read(Parameters* p) {
   
   // Raw parameter mappings (no scaling).
   // Raw algorithm
-  p->raw_algorithm_pot = UnwrapPot(lp_state_[ADC_ALGORITHM_POT]);
+  p->raw_algorithm_pot = lp_state_[ADC_ALGORITHM_POT];
   float raw_algorithm_cv = calibration_data_->offset[ADC_ALGORITHM_CV] - lp_state_[ADC_ALGORITHM_CV];
   p->raw_algorithm_cv = raw_algorithm_cv * 2.0f;
   CONSTRAIN(p->raw_algorithm_cv, -1.0f, 1.0f);
