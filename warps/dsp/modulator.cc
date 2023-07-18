@@ -354,13 +354,12 @@ void Modulator::ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_
   ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
 
   // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
-  //RenderCarrier(input, carrier, aux_output, size);
   if (parameters_.carrier_shape) {
     RenderCarrier(input, carrier, aux_output, size, true);
   }
 
   float timbre_att = previous_parameters_.raw_modulation;
-  float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm_pot) + previous_parameters_.raw_algorithm_cv;
+  float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
   mlf.SetRes(timbre_att * 5.0f);
   mlf.SetFreq(algo_exp_att * 4000.0f);
 
