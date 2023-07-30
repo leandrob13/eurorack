@@ -68,6 +68,27 @@ struct Voice {
   int16_t chord;
   float chord_transpose;
   int16_t genre;
+  bool active_envelope;
+  float vca_level; // Damping attenuator
+  float vca_cv; // Damping CV
+  float filter_frequency; // Position pot
+  float filter_amount; // Position attenueverter
+  float filter_cv; // Position CV
+};
+
+const int32_t kRegistrationTableSize = 11;
+const float registrations[kRegistrationTableSize][numHarmonics * 2] = {
+  { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+  { 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+  { 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f },
+  { 1.0f, 0.1f, 0.0f, 0.0f, 1.0f, 0.0f },
+  { 1.0f, 0.5f, 1.0f, 0.0f, 1.0f, 0.0f },
+  { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f },
+  { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f },
+  { 0.0f, 0.5f, 1.0f, 0.0f, 1.0f, 0.0f },
+  { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f },
+  { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+  { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f },
 };
 
 class ChordOrgan {
@@ -106,10 +127,33 @@ class ChordOrgan {
   
  private:
   void ProcessEnvelopes(float shape, uint8_t* flags, float* values);
-  void ComputeRegistration(float gain, float registration, float* amplitudes);
+  
+  void ComputeRegistration(
+    float gain,
+    float registration,
+    float* amplitudes) {
+  registration *= (kRegistrationTableSize - 1.001f);
+  MAKE_INTEGRAL_FRACTIONAL(registration);
+  float total = 0.0f;
+  for (int32_t i = 0; i < numHarmonics * 2; ++i) {
+    float a = registrations[registration_integral][i];
+    float b = registrations[registration_integral + 1][i];
+    amplitudes[i] = a + (b - a) * registration_fractional;
+    total += amplitudes[i];
+  }
+
+  float modulation = group_[active_group_].active_envelope ? 
+      gain + group_[active_group_].vca_cv * group_[active_group_].vca_level : 
+      group_[active_group_].vca_cv + group_[active_group_].vca_level;
+  CONSTRAIN(modulation, 0.0f, 1.0f);
+  
+  for (int32_t i = 0; i < numHarmonics * 2; ++i) {
+    amplitudes[i] = modulation * amplitudes[i] / total;
+  }
+}
 
   void ProcessFilter(
-    float frequency,
+    float envelope,
     float* out,
     float* aux,
     size_t size) {
@@ -117,10 +161,17 @@ class ChordOrgan {
   for (size_t i = 0; i < size; ++i) {
     filter_in_buffer_[i] = out[i] + aux[i];
   }
-  float exp_freq = exp_amp(frequency);    
+
+  float exp_freq = exp_amp(group_[active_group_].filter_frequency);    
+  float modulation = group_[active_group_].active_envelope ? 
+      (envelope + group_[active_group_].filter_cv) * group_[active_group_].filter_amount : 
+      group_[active_group_].filter_cv * group_[active_group_].filter_amount;
+
+  float total_mod = exp_freq + modulation;
+  CONSTRAIN(total_mod, 0.0f, 1.0f);
   std::fill(&out[0], &out[size], 0.0f);
   std::fill(&aux[0], &aux[size], 0.0f);
-  filter_.set_f_q<FREQUENCY_FAST>(exp_freq * 0.1f, 1.25f);
+  filter_.set_f_q<FREQUENCY_FAST>(total_mod * 0.1f, 1.75f);
   float o1;
   for (size_t i = 0; i < size; ++i) {
     o1 = filter_.Process<FILTER_MODE_LOW_PASS>(filter_in_buffer_[i]);

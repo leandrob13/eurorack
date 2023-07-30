@@ -46,6 +46,12 @@ struct PerformanceState {
   int32_t chord;
 
   int16_t genre;
+  float envelope; // Damping pot
+  float vca_level; // Damping attenuator
+  float vca_cv; // Damping CV
+  float filter_frequency; // Position pot
+  float filter_amount; // Position attenueverter
+  float filter_cv; // Position CV
 };
 
 }  // namespace rings

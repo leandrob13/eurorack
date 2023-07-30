@@ -63,39 +63,6 @@ void ChordOrgan::Init(uint16_t* reverb_buffer) {
       0.004f); // Prevent a sharp edge to partly leak on the previous voice.
 }
 
-const int32_t kRegistrationTableSize = 11;
-const float registrations[kRegistrationTableSize][numHarmonics * 2] = {
-  { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-  { 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-  { 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f },
-  { 1.0f, 0.1f, 0.0f, 0.0f, 1.0f, 0.0f },
-  { 1.0f, 0.5f, 1.0f, 0.0f, 1.0f, 0.0f },
-  { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f },
-  { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f },
-  { 0.0f, 0.5f, 1.0f, 0.0f, 1.0f, 0.0f },
-  { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f },
-  { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
-  { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f },
-};
-
-void ChordOrgan::ComputeRegistration(
-    float gain,
-    float registration,
-    float* amplitudes) {
-  registration *= (kRegistrationTableSize - 1.001f);
-  MAKE_INTEGRAL_FRACTIONAL(registration);
-  float total = 0.0f;
-  for (int32_t i = 0; i < numHarmonics * 2; ++i) {
-    float a = registrations[registration_integral][i];
-    float b = registrations[registration_integral + 1][i];
-    amplitudes[i] = a + (b - a) * registration_fractional;
-    total += amplitudes[i];
-  }
-  for (int32_t i = 0; i < numHarmonics * 2; ++i) {
-    amplitudes[i] = gain * amplitudes[i] / total;
-  }
-}
-
 void ChordOrgan::ProcessEnvelopes(
     float shape,
     uint8_t* flags,
@@ -154,11 +121,17 @@ void ChordOrgan::Process(
   group_[active_group_].chord = static_cast<int16_t>(ceil(note_filter_.note()));
   group_[active_group_].chord_transpose = static_cast<int16_t>(group_[active_group_].chord / 12) * 12.0f;
   group_[active_group_].genre = performance_state.genre;
+  group_[active_group_].vca_level = performance_state.vca_level;
+  group_[active_group_].vca_cv = performance_state.vca_cv;
+  group_[active_group_].filter_frequency = performance_state.filter_frequency;
+  group_[active_group_].filter_cv = performance_state.filter_cv;
+  group_[active_group_].filter_amount = performance_state.filter_amount;
+  group_[active_group_].active_envelope = performance_state.envelope <= 0.98f;
   envelope_flags[active_group_] |= ENVELOPE_FLAG_GATE;
 
   // Process envelopes.
   float envelope_values[maxStringSynthPolyphony];
-  ProcessEnvelopes(patch.damping, envelope_flags, envelope_values);
+  ProcessEnvelopes(performance_state.envelope, envelope_flags, envelope_values);
   
   copy(&in[0], &in[size], &aux[0]);
   copy(&in[0], &in[size], &out[0]);
@@ -219,7 +192,7 @@ void ChordOrgan::Process(
   switch (fx_type_) {
     case FILTER:
     case FILTER_2:
-        ProcessFilter(patch.position, out, aux,size);
+        ProcessFilter(envelope_values[active_group_] * 0.25f, out, aux, size);
       break;
 
     case CHORUS:
