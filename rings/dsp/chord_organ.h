@@ -152,6 +152,7 @@ class ChordOrgan {
   }
 }
 
+  template<FilterMode mode>
   void ProcessFilter(
     float envelope,
     float* out,
@@ -171,18 +172,19 @@ class ChordOrgan {
   CONSTRAIN(total_mod, 0.0f, 1.0f);
   std::fill(&out[0], &out[size], 0.0f);
   std::fill(&aux[0], &aux[size], 0.0f);
-  filter_.set_f_q<FREQUENCY_FAST>(total_mod * 0.1f, 1.75f);
+
+  float factor = mode == FILTER_MODE_LOW_PASS ? 0.1f : 0.25f;
+  filter_.set_f_q<FREQUENCY_FAST>(total_mod * factor, 1.75f);
   float o1;
   for (size_t i = 0; i < size; ++i) {
-    o1 = filter_.Process<FILTER_MODE_LOW_PASS>(filter_in_buffer_[i]);
-    filter_out_buffer_[i] = filter_.Process<FILTER_MODE_LOW_PASS>(o1);
-  }      
-  
+    o1 = filter_.Process<mode>(filter_in_buffer_[i]);
+    filter_out_buffer_[i] = mode == FILTER_MODE_LOW_PASS ? filter_.Process<mode>(o1) : o1;
+  }
+        
   for (size_t j = 0; j < size; ++j) {
     out[j] += filter_out_buffer_[j] * 0.5f;
     aux[j] += filter_out_buffer_[j] * 0.5f;
   }
-  
 }
 
   float exp_amp(float x) {

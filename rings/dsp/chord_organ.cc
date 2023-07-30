@@ -191,8 +191,11 @@ void ChordOrgan::Process(
   
   switch (fx_type_) {
     case FILTER:
+      ProcessFilter<FILTER_MODE_LOW_PASS>(envelope_values[active_group_] * 0.25f, out, aux, size);
+      break;
+      
     case FILTER_2:
-        ProcessFilter(envelope_values[active_group_] * 0.25f, out, aux, size);
+      ProcessFilter<FILTER_MODE_HIGH_PASS>(envelope_values[active_group_] * 0.25f, out, aux, size);
       break;
 
     case CHORUS:
