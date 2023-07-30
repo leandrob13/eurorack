@@ -35,6 +35,7 @@
 #include "rings/cv_scaler.h"
 #include "rings/dsp/part.h"
 #include "rings/dsp/string_synth_part.h"
+#include "rings/dsp/chord_organ.h"
 
 namespace rings {
 
@@ -47,7 +48,7 @@ void Ui::Init(
     Settings* settings,
     CvScaler* cv_scaler,
     Part* part,
-    StringSynthPart* string_synth) {
+    ChordOrgan* string_synth) {
   leds_.Init();
   switches_.Init();
   
@@ -69,7 +70,7 @@ void Ui::Init(
   part_->set_polyphony(settings_->state().polyphony);
   part_->set_model(static_cast<ResonatorModel>(settings_->state().model));
   string_synth_->set_polyphony(settings_->state().polyphony);
-  string_synth_->set_fx(static_cast<FxType>(settings_->state().model));
+  string_synth_->set_fx(static_cast<ChordOrganFxType>(settings_->state().model));
   mode_ = settings_->state().easter_egg
       ? UI_MODE_EASTER_EGG_INTRO
       : UI_MODE_NORMAL;
@@ -309,7 +310,7 @@ void Ui::OnSwitchReleased(const Event& e) {
             model += 3;
           }
           part_->set_model(static_cast<ResonatorModel>(model));
-          string_synth_->set_fx(static_cast<FxType>(model));
+          string_synth_->set_fx(static_cast<ChordOrganFxType>(model));
         }
       } else {
         int32_t model = part_->model();
@@ -319,7 +320,7 @@ void Ui::OnSwitchReleased(const Event& e) {
           model = (model + 1) % 3;
         }
         part_->set_model(static_cast<ResonatorModel>(model));
-        string_synth_->set_fx(static_cast<FxType>(model));
+        string_synth_->set_fx(static_cast<ChordOrganFxType>(model));
       }
       SaveState();
       break;

@@ -45,7 +45,7 @@ PACKAGES       = rings \
 		stmlib/system
 RESOURCES      = rings/resources
 
-TOOLCHAIN_PATH ?= /usr/local/arm-4.8.3/
+TOOLCHAIN_PATH ?= ${MI_TOOLCHAIN_PATH}
 
 include stmlib/makefile.inc
 

@@ -105,7 +105,7 @@ class CvScaler {
   
   inline bool easter_egg() const {
     return adc_lp_[ADC_CHANNEL_POT_FREQUENCY] < 0.1f &&
-        adc_lp_[ADC_CHANNEL_POT_STRUCTURE] > 0.9f &&
+        adc_lp_[ADC_CHANNEL_POT_STRUCTURE] > 0.9f;/* &&
         adc_lp_[ADC_CHANNEL_POT_BRIGHTNESS] < 0.1f &&
         adc_lp_[ADC_CHANNEL_POT_POSITION] > 0.9f &&
         adc_lp_[ADC_CHANNEL_POT_DAMPING] > 0.4f &&
@@ -114,7 +114,7 @@ class CvScaler {
         adc_lp_[ADC_CHANNEL_ATTENUVERTER_FREQUENCY] > 1.00f &&
         adc_lp_[ADC_CHANNEL_ATTENUVERTER_DAMPING] < -1.00f &&
         adc_lp_[ADC_CHANNEL_ATTENUVERTER_STRUCTURE] > 1.00f &&
-        adc_lp_[ADC_CHANNEL_ATTENUVERTER_POSITION] < -1.00f;
+        adc_lp_[ADC_CHANNEL_ATTENUVERTER_POSITION] < -1.00f;*/
   }
   
   inline void CalibrateC1() {
@@ -210,7 +210,9 @@ class CvScaler {
   float fm_cv_;
   float cv_c1_;
   float cv_low_;
+  
   int32_t chord_;
+  int32_t genre_;
   
   bool normalization_probe_enabled_;
   bool normalization_probe_forced_state_;

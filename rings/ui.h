@@ -42,6 +42,7 @@ class Settings;
 class CvScaler;
 class Part;
 class StringSynthPart;
+class ChordOrgan;
 
 enum UiMode {
   UI_MODE_NORMAL,
@@ -72,7 +73,7 @@ class Ui {
       Settings* settings,
       CvScaler* cv_scaler,
       Part* part,
-      StringSynthPart* string_synth);
+      ChordOrgan* string_synth);
   void Poll();
   void DoEvents();
   void FlushEvents();
@@ -114,7 +115,7 @@ class Ui {
   Settings* settings_;
   CvScaler* cv_scaler_;
   Part* part_;
-  StringSynthPart* string_synth_;
+  ChordOrgan* string_synth_;
   
   DISALLOW_COPY_AND_ASSIGN(Ui);
 };

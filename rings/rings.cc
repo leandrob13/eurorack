@@ -31,6 +31,7 @@
 #include "rings/dsp/part.h"
 #include "rings/dsp/strummer.h"
 #include "rings/dsp/string_synth_part.h"
+#include "rings/dsp/chord_organ.h"
 #include "rings/cv_scaler.h"
 #include "rings/settings.h"
 #include "rings/ui.h"
@@ -47,7 +48,7 @@ CvScaler cv_scaler;
 DebugPort debug_port;
 Part part;
 Settings settings;
-StringSynthPart string_synth;
+ChordOrgan string_synth;
 Strummer strummer;
 Ui ui;
 

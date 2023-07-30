@@ -223,6 +223,17 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   chord_ = static_cast<int32_t>(chord + hysteresis + 0.5f);
   CONSTRAIN(chord_, 0, kNumChords - 1);
   performance_state->chord = chord_;
+
+  // Hysteresis on genre.
+  float genre = adc_lp_[ADC_CHANNEL_POT_STRUCTURE];
+  /*genre += calibration_data_->offset[ADC_CHANNEL_CV_STRUCTURE] - \
+      adc_.float_value(ADC_CHANNEL_CV_STRUCTURE);
+  genre *= adc_lp_[ADC_CHANNEL_ATTENUVERTER_STRUCTURE];*/    
+  genre *= static_cast<float>(kNumGenres - 1);
+  hysteresis = genre - genre_ > 0.0f ? -0.1f : +0.1f;
+  genre_ = static_cast<int32_t>(genre + hysteresis + 0.5f);
+  CONSTRAIN(genre_, 0, kNumGenres - 1);
+  performance_state->genre = genre_;
   
   adc_.Convert();
   trigger_input_.Read();
