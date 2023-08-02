@@ -48,7 +48,7 @@ CvScaler cv_scaler;
 DebugPort debug_port;
 Part part;
 Settings settings;
-ChordOrgan string_synth;
+ChordStringSynth string_synth;
 Strummer strummer;
 Ui ui;
 

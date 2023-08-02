@@ -32,7 +32,7 @@
 namespace rings {
 
 const int32_t kNumChords = 11;
-const int32_t kNumGenres = 29;
+const int32_t kNumGenres = 25;
 
 struct PerformanceState {
   bool strum;

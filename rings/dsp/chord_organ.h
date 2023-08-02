@@ -46,9 +46,7 @@
 
 namespace rings {
 
-const int32_t maxStringSynthPolyphony = 4;
 const int32_t stringSynthVoices = 12;
-const int32_t maxChordSize = 8;
 const int32_t chord_size = 4;
 const int32_t numHarmonics = 3;
 
@@ -62,9 +60,10 @@ enum ChordOrganFxType {
   LAST
 };
 
-struct Voice {
+struct Synth {
   float tonic;
   StringSynthEnvelope envelope;
+  StringSynthVoice<numHarmonics> voice[stringSynthVoices];
   int16_t chord;
   float chord_transpose;
   int16_t genre;
@@ -91,10 +90,10 @@ const float registrations[kRegistrationTableSize][numHarmonics * 2] = {
   { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f },
 };
 
-class ChordOrgan {
+class ChordStringSynth {
  public:
-  ChordOrgan() { }
-  ~ChordOrgan() { }
+  ChordStringSynth() { }
+  ~ChordStringSynth() { }
   
   void Init(uint16_t* reverb_buffer);
   
@@ -114,19 +113,37 @@ class ChordOrgan {
     fx_type_ = fx_type;
   }
 
-  inline void set_polyphony(int32_t polyphony) {
-    int32_t old_polyphony = polyphony_;
-    polyphony_ = std::min(polyphony, maxStringSynthPolyphony);
-    for (int32_t i = old_polyphony; i < polyphony_; ++i) {
-      group_[i].tonic = group_[0].tonic + i * 0.01f;
-    }
-    if (active_group_ >= polyphony_) {
-      active_group_ = 0;
-    }
+  inline void set_bank(int32_t bank) {
+    bank_ = bank;
   }
   
  private:
-  void ProcessEnvelopes(float shape, uint8_t* flags, float* values);
+  float ProcessEnvelopes(float shape, uint8_t flag) {
+  float decay = shape;
+  float attack = 0.0f;
+  if (shape < 0.5f) {
+    attack = 0.0f;
+  } else {
+    attack = (shape - 0.5f) * 2.0f;
+  }
+  
+  // Convert the arbitrary values to actual units.
+  float period = kSampleRate / kMaxBlockSize;
+  float attack_time = SemitonesToRatio(attack * 96.0f) * 0.005f * period;
+  // float decay_time = SemitonesToRatio(decay * 96.0f) * 0.125f * period;
+  float decay_time = SemitonesToRatio(decay * 84.0f) * 0.180f * period;
+  float attack_rate = 1.0f / attack_time;
+  float decay_rate = 1.0f / decay_time;
+  
+  float drone = shape < 0.98f ? 0.0f : (shape - 0.98f) * 55.0f;
+  if (drone >= 1.0f) drone = 1.0f;
+
+  synth.envelope.set_ad(attack_rate, decay_rate);
+  float value = synth.envelope.Process(flag);
+  value = value + (1.0f - value) * drone;
+  
+  return value;
+}
   
   void ComputeRegistration(
     float gain,
@@ -142,9 +159,9 @@ class ChordOrgan {
     total += amplitudes[i];
   }
 
-  float modulation = group_[active_group_].active_envelope ? 
-      gain + group_[active_group_].vca_cv * group_[active_group_].vca_level : 
-      group_[active_group_].vca_cv + group_[active_group_].vca_level;
+  float modulation = synth.active_envelope ? 
+      gain + synth.vca_cv * synth.vca_level : 
+      synth.vca_cv + synth.vca_level;
   CONSTRAIN(modulation, 0.0f, 1.0f);
   
   for (int32_t i = 0; i < numHarmonics * 2; ++i) {
@@ -163,10 +180,10 @@ class ChordOrgan {
     filter_in_buffer_[i] = out[i] + aux[i];
   }
 
-  float exp_freq = exp_amp(group_[active_group_].filter_frequency);    
-  float modulation = group_[active_group_].active_envelope ? 
-      (envelope + group_[active_group_].filter_cv) * group_[active_group_].filter_amount : 
-      group_[active_group_].filter_cv * group_[active_group_].filter_amount;
+  float exp_freq = exp_amp(synth.filter_frequency);    
+  float modulation = synth.active_envelope ? 
+      (envelope + synth.filter_cv) * synth.filter_amount : 
+      synth.filter_cv * synth.filter_amount;
 
   float total_mod = exp_freq + modulation;
   CONSTRAIN(total_mod, 0.0f, 1.0f);
@@ -194,8 +211,8 @@ class ChordOrgan {
     return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
   }
   
-  StringSynthVoice<numHarmonics> voice_[stringSynthVoices];
-  Voice group_[maxStringSynthPolyphony];
+  
+  Synth synth;
   
   stmlib::Svf filter_;
   Ensemble ensemble_;
@@ -203,11 +220,7 @@ class ChordOrgan {
   Chorus chorus_;
   Limiter limiter_;
 
-  int32_t num_voices_;
-  int32_t active_group_;
-  uint32_t step_counter_;
-  int32_t polyphony_;
-  int32_t acquisition_delay_;
+  int32_t bank_;
   
   ChordOrganFxType fx_type_;
   
@@ -218,7 +231,7 @@ class ChordOrgan {
   
   bool clear_fx_;
   
-  DISALLOW_COPY_AND_ASSIGN(ChordOrgan);
+  DISALLOW_COPY_AND_ASSIGN(ChordStringSynth);
 };
 
 }  // namespace rings

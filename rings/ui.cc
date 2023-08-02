@@ -48,7 +48,7 @@ void Ui::Init(
     Settings* settings,
     CvScaler* cv_scaler,
     Part* part,
-    ChordOrgan* string_synth) {
+    ChordStringSynth* string_synth) {
   leds_.Init();
   switches_.Init();
   
@@ -69,7 +69,7 @@ void Ui::Init(
   
   part_->set_polyphony(settings_->state().polyphony);
   part_->set_model(static_cast<ResonatorModel>(settings_->state().model));
-  string_synth_->set_polyphony(settings_->state().polyphony);
+  string_synth_->set_bank(settings_->state().polyphony);
   string_synth_->set_fx(static_cast<ChordOrganFxType>(settings_->state().model));
   mode_ = settings_->state().easter_egg
       ? UI_MODE_EASTER_EGG_INTRO
@@ -261,7 +261,7 @@ void Ui::OnSwitchReleased(const Event& e) {
           AnimateEasterEggLeds();
         } else {
           part_->set_polyphony(3);
-          string_synth_->set_polyphony(3);
+          string_synth_->set_bank(3);
         }
         SaveState();
       } else {
@@ -289,7 +289,7 @@ void Ui::OnSwitchReleased(const Event& e) {
                 polyphony = 1;
               }
               part_->set_polyphony(polyphony);
-              string_synth_->set_polyphony(polyphony);
+              string_synth_->set_bank(polyphony);
               SaveState();
             }
             break;
