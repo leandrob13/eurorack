@@ -5,46 +5,46 @@
 const float genre_chords[4][25][12][4] = {
     {
         {   //Oct Stack1
-            { 48.0f, 36.0f, 36.0f, 24.0f }, //Oct Stack C
-            { 49.0f, 37.0f, 37.0f, 25.0f }, //Oct Stack C#
-            { 50.0f, 38.0f, 38.0f, 26.0f }, //Oct Stack D
-            { 51.0f, 39.0f, 39.0f, 27.0f }, //Oct Stack D#
-            { 52.0f, 40.0f, 40.0f, 28.0f }, //Oct Stack E
-            { 53.0f, 41.0f, 41.0f, 29.0f }, //Oct Stack F
-            { 54.0f, 42.0f, 42.0f, 30.0f }, //Oct Stack F#
-            { 55.0f, 43.0f, 43.0f, 31.0f }, //Oct Stack G
-            { 56.0f, 44.0f, 44.0f, 32.0f }, //Oct Stack G#
-            { 57.0f, 45.0f, 45.0f, 33.0f }, //Oct Stack A
-            { 58.0f, 46.0f, 46.0f, 34.0f }, //Oct Stack A#
-            { 59.0f, 47.0f, 47.0f, 35.0f } //Oct Stack B
+            { 24.14f, 12.24f, 12.26f, 0.0f }, //Oct Stack C
+            { 25.20f, 13.47f, 13.27f, 1.0f }, //Oct Stack C#
+            { 26.18f, 14.37f, 14.41f, 2.0f }, //Oct Stack D
+            { 27.35f, 15.30f, 15.18f, 3.0f }, //Oct Stack D#
+            { 28.10f, 16.38f, 16.10f, 4.0f }, //Oct Stack E
+            { 29.49f, 17.26f, 17.18f, 5.0f }, //Oct Stack F
+            { 30.10f, 18.15f, 18.44f, 6.0f }, //Oct Stack F#
+            { 31.30f, 19.27f, 19.10f, 7.0f }, //Oct Stack G
+            { 32.11f, 20.46f, 20.38f, 8.0f }, //Oct Stack G#
+            { 33.12f, 21.34f, 21.24f, 9.0f }, //Oct Stack A
+            { 34.47f, 22.50f, 22.45f, 10.0f }, //Oct Stack A#
+            { 35.41f, 23.31f, 23.20f, 11.0f } //Oct Stack B
         },
         {   //4th Stack1
-            { 41.0f, 36.0f, 29.0f, 24.0f }, //4th Stack C
-            { 42.0f, 37.0f, 30.0f, 25.0f }, //4th Stack C#
-            { 43.0f, 38.0f, 31.0f, 26.0f }, //4th Stack D
-            { 44.0f, 39.0f, 32.0f, 27.0f }, //4th Stack D#
-            { 45.0f, 40.0f, 33.0f, 28.0f }, //4th Stack E
-            { 46.0f, 41.0f, 34.0f, 29.0f }, //4th Stack F
-            { 47.0f, 42.0f, 35.0f, 30.0f }, //4th Stack F#
-            { 48.0f, 43.0f, 36.0f, 31.0f }, //4th Stack G
-            { 49.0f, 44.0f, 37.0f, 32.0f }, //4th Stack G#
-            { 50.0f, 45.0f, 38.0f, 33.0f }, //4th Stack A
-            { 51.0f, 46.0f, 39.0f, 34.0f }, //4th Stack A#
-            { 52.0f, 47.0f, 40.0f, 35.0f } //4th Stack B
+            { 17.43f, 12.11f, 5.16f, 0.0f }, //4th Stack C
+            { 18.39f, 13.35f, 6.22f, 1.0f }, //4th Stack C#
+            { 19.30f, 14.11f, 7.18f, 2.0f }, //4th Stack D
+            { 20.39f, 15.43f, 8.14f, 3.0f }, //4th Stack D#
+            { 21.35f, 16.36f, 9.36f, 4.0f }, //4th Stack E
+            { 22.37f, 17.44f, 10.44f, 5.0f }, //4th Stack F
+            { 23.47f, 18.47f, 11.47f, 6.0f }, //4th Stack F#
+            { 24.41f, 19.27f, 12.20f, 7.0f }, //4th Stack G
+            { 25.23f, 20.40f, 13.31f, 8.0f }, //4th Stack G#
+            { 26.43f, 21.22f, 14.49f, 9.0f }, //4th Stack A
+            { 27.33f, 22.17f, 15.42f, 10.0f }, //4th Stack A#
+            { 28.34f, 23.38f, 16.42f, 11.0f } //4th Stack B
         },
         {   //5th Stack1
-            { 43.0f, 36.0f, 31.0f, 24.0f }, //5th Stack C
-            { 44.0f, 37.0f, 32.0f, 25.0f }, //5th Stack C#
-            { 45.0f, 38.0f, 33.0f, 26.0f }, //5th Stack D
-            { 46.0f, 39.0f, 34.0f, 27.0f }, //5th Stack D#
-            { 47.0f, 40.0f, 35.0f, 28.0f }, //5th Stack E
-            { 48.0f, 41.0f, 36.0f, 29.0f }, //5th Stack F
-            { 49.0f, 42.0f, 37.0f, 30.0f }, //5th Stack F#
-            { 50.0f, 43.0f, 38.0f, 31.0f }, //5th Stack G
-            { 51.0f, 44.0f, 39.0f, 32.0f }, //5th Stack G#
-            { 52.0f, 45.0f, 40.0f, 33.0f }, //5th Stack A
-            { 53.0f, 46.0f, 41.0f, 34.0f }, //5th Stack A#
-            { 54.0f, 47.0f, 42.0f, 35.0f } //5th Stack B
+            { 19.15f, 12.43f, 7.32f, 0.0f }, //5th Stack C
+            { 20.37f, 13.19f, 8.43f, 1.0f }, //5th Stack C#
+            { 21.48f, 14.45f, 9.40f, 2.0f }, //5th Stack D
+            { 22.50f, 15.44f, 10.39f, 3.0f }, //5th Stack D#
+            { 23.16f, 16.25f, 11.39f, 4.0f }, //5th Stack E
+            { 24.47f, 17.44f, 12.15f, 5.0f }, //5th Stack F
+            { 25.12f, 18.31f, 13.38f, 6.0f }, //5th Stack F#
+            { 26.24f, 19.36f, 14.25f, 7.0f }, //5th Stack G
+            { 27.41f, 20.24f, 15.12f, 8.0f }, //5th Stack G#
+            { 28.36f, 21.46f, 16.20f, 9.0f }, //5th Stack A
+            { 29.43f, 22.38f, 17.43f, 10.0f }, //5th Stack A#
+            { 30.46f, 23.41f, 18.38f, 11.0f } //5th Stack B
         },
         {   //Blues1
             { 40.0f, 38.0f, 34.0f, 24.0f }, //C9
