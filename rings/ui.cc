@@ -34,7 +34,6 @@
 
 #include "rings/cv_scaler.h"
 #include "rings/dsp/part.h"
-#include "rings/dsp/string_synth_part.h"
 #include "rings/dsp/chord_organ.h"
 
 namespace rings {

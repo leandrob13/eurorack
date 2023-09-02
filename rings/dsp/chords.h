@@ -1,6 +1,3 @@
-//const int genre_count = 100;
-//const int banks = 4;
-//const int genre_bank = genre_count / 4;
 
 const float genre_chords[4][25][12][4] = {
     {

@@ -104,15 +104,14 @@ void ChordStringSynth::Process(
   float harmonics[numHarmonics * 2];
   
   ComputeRegistration(
-      envelope_value * 0.25f,
+      envelope_value,
       patch.brightness,
       harmonics);
   
-  // Note enough polyphony for smooth transition between chords.
   int16_t chord = synth.chord % 12;
   for (int32_t i = 0; i < chord_size; ++i) {
     float n = genre_chords[bank_ - 1][synth.genre][chord][i];
-    notes[i].note = n - 12.0f;
+    notes[i].note = n;
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
 
