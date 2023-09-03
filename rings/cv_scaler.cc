@@ -225,15 +225,19 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   performance_state->chord = chord_;
 
   // Hysteresis on genre.
-  float genre = adc_lp_[ADC_CHANNEL_POT_STRUCTURE];
-  /*genre += calibration_data_->offset[ADC_CHANNEL_CV_STRUCTURE] - \
-      adc_.float_value(ADC_CHANNEL_CV_STRUCTURE);
-  genre *= adc_lp_[ADC_CHANNEL_ATTENUVERTER_STRUCTURE];*/    
+  float genre = adc_lp_[ADC_CHANNEL_POT_STRUCTURE];    
   genre *= static_cast<float>(kNumGenres - 1);
   hysteresis = genre - genre_ > 0.0f ? -0.1f : +0.1f;
   genre_ = static_cast<int32_t>(genre + hysteresis + 0.5f);
   CONSTRAIN(genre_, 0, kNumGenres - 1);
   performance_state->genre = genre_;
+
+  float arp = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_STRUCTURE);
+  arp *= static_cast<float>(kNumArps - 1);
+  hysteresis = arp - arp_ > 0.0f ? -0.1f : +0.1f;
+  arp_ = static_cast<int32_t>(arp + hysteresis + 0.5f);
+  CONSTRAIN(arp_, 0, kNumArps - 1);
+  performance_state->arp = arp_;
 
   performance_state->envelope = adc_lp_[ADC_CHANNEL_POT_DAMPING];
   performance_state->vca_level = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_DAMPING);

@@ -43,6 +43,7 @@
 #include "rings/dsp/performance_state.h"
 #include "rings/dsp/string_synth_envelope.h"
 #include "rings/dsp/string_synth_voice.h"
+#include "rings/dsp/arpeggiator.h"
 
 namespace rings {
 
@@ -64,6 +65,7 @@ struct Synth {
   float tonic;
   StringSynthEnvelope envelope;
   StringSynthVoice<numHarmonics> voice[stringSynthVoices];
+  Arpeggiator arp;
   int16_t chord;
   float chord_transpose;
   int16_t genre;
@@ -221,7 +223,6 @@ class ChordStringSynth {
   Limiter limiter_;
 
   int32_t bank_;
-  
   ChordOrganFxType fx_type_;
   
   NoteFilter note_filter_;

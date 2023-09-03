@@ -45,6 +45,7 @@ void ChordStringSynth::Init(uint16_t* reverb_buffer) {
   
   synth.tonic = 0.0f;
   synth.envelope.Init();
+  synth.arp.Init();
   
   filter_.Init();
   limiter_.Init();
@@ -77,10 +78,7 @@ void ChordStringSynth::Process(
   uint8_t envelope_flag = 0;
   
   note_filter_.Process(performance_state.note, performance_state.strum);
-  if (performance_state.strum) {
-    envelope_flag = ENVELOPE_FLAG_RISING_EDGE;
-  }
-  
+
   synth.tonic = performance_state.tonic;
   synth.chord = static_cast<int16_t>(ceil(note_filter_.note()));
   synth.chord_transpose = static_cast<int16_t>(synth.chord / 12) * 12.0f;
@@ -91,11 +89,22 @@ void ChordStringSynth::Process(
   synth.filter_cv = performance_state.filter_cv;
   synth.filter_amount = performance_state.filter_amount;
   synth.active_envelope = performance_state.envelope <= 0.98f;
+  synth.arp.set_mode(ArpeggiatorMode(performance_state.arp));
+  bool arpeggiated = synth.arp.mode() != ARPEGGIATOR_MODE_OFF;
+
+  if (!arpeggiated) synth.arp.Reset();
+  if (performance_state.strum) {
+    envelope_flag = ENVELOPE_FLAG_RISING_EDGE;
+    if (arpeggiated) {
+      synth.arp.set_range(1);
+      synth.arp.Clock(chord_size);
+    }
+  }
   envelope_flag |= ENVELOPE_FLAG_GATE;
+  bool clocked = arpeggiated && !performance_state.internal_strum;
 
   // Process envelopes.
   float envelope_value = ProcessEnvelopes(performance_state.envelope, envelope_flag);
-  
   
   copy(&in[0], &in[size], &aux[0]);
   copy(&in[0], &in[size], &out[0]);
@@ -109,9 +118,11 @@ void ChordStringSynth::Process(
       harmonics);
   
   int16_t chord = synth.chord % 12;
+  int cn = synth.arp.note() - 1;
   for (int32_t i = 0; i < chord_size; ++i) {
-    float n = genre_chords[bank_ - 1][synth.genre][chord][i];
-    notes[i].note = n;
+    int index = clocked ? cn : i;
+    float n = genre_chords[bank_ - 1][synth.genre][chord][index];
+    notes[i].note = n - 12.0f;
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
 
@@ -142,6 +153,64 @@ void ChordStringSynth::Process(
         chord_note & 1 ? out : aux,
         size);
   }
+  /*
+  if (clocked) {
+    float note = 0.0f;
+    int chord_note = synth.arp.note() - 1;
+    note += synth.tonic; // Freq pot root note transpose
+    note += synth.chord_transpose; // Chord transpose
+    note += performance_state.fm;
+    note += notes[chord_note].note; // Chord note
+
+    float frequency = SemitonesToRatio(note - 69.0f) * a3;
+    for (int32_t cn = 0; cn < chord_size; ++cn) {
+      float amplitudes[numHarmonics * 2];
+      for (int32_t i = 0; i < numHarmonics * 2; ++i) {
+        amplitudes[i] = notes[chord_note].amplitude * harmonics[i];
+      }
+      // Fold truncated harmonics.
+      size_t num_harmonics = numHarmonics;
+      for (int32_t i = num_harmonics; i < numHarmonics; ++i) {
+        amplitudes[2 * (num_harmonics - 1)] += amplitudes[2 * i];
+        amplitudes[2 * (num_harmonics - 1) + 1] += amplitudes[2 * i + 1];
+      }
+
+      synth.voice[cn].Render(
+        frequency,
+        amplitudes,
+        num_harmonics,
+        cn & 1 ? out : aux,
+        size);
+    }
+  } else {
+    for (int32_t chord_note = 0; chord_note < chord_size; ++chord_note) {
+      float note = 0.0f;
+      note += synth.tonic; // Freq pot root note transpose
+      note += synth.chord_transpose; // Chord transpose
+      note += performance_state.fm;
+      note += notes[chord_note].note; // Chord note
+      
+      float amplitudes[numHarmonics * 2];
+      for (int32_t i = 0; i < numHarmonics * 2; ++i) {
+        amplitudes[i] = notes[chord_note].amplitude * harmonics[i];
+      }
+      
+      // Fold truncated harmonics.
+      size_t num_harmonics = numHarmonics;
+      for (int32_t i = num_harmonics; i < numHarmonics; ++i) {
+        amplitudes[2 * (num_harmonics - 1)] += amplitudes[2 * i];
+        amplitudes[2 * (num_harmonics - 1) + 1] += amplitudes[2 * i + 1];
+      }
+
+      float frequency = SemitonesToRatio(note - 69.0f) * a3;
+      synth.voice[chord_note].Render(
+          frequency,
+          amplitudes,
+          num_harmonics,
+          chord_note & 1 ? out : aux,
+          size);
+    }
+  }*/
   
   if (clear_fx_) {
     reverb_.Clear();

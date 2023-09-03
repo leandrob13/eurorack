@@ -213,6 +213,7 @@ class CvScaler {
   
   int32_t chord_;
   int32_t genre_;
+  int32_t arp_;
   
   bool normalization_probe_enabled_;
   bool normalization_probe_forced_state_;
