@@ -34,15 +34,10 @@
 namespace rings {
 
 enum ArpeggiatorMode {
-  ARPEGGIATOR_MODE_OFF,
   ARPEGGIATOR_MODE_UP,
   ARPEGGIATOR_MODE_DOWN,
   ARPEGGIATOR_MODE_UP_DOWN,
-  ARPEGGIATOR_MODE_RANDOM,
-  ARPEGGIATOR_MODE_UP_1OCT,
-  ARPEGGIATOR_MODE_DOWN_1OCT,
-  ARPEGGIATOR_MODE_UP_DOWN_1OCT,
-  ARPEGGIATOR_MODE_RANDOM_1OCT
+  ARPEGGIATOR_MODE_RANDOM
 };
 
 class Arpeggiator{
@@ -51,7 +46,7 @@ class Arpeggiator{
   ~Arpeggiator() { }
   
   void Init() {
-    mode_ = ARPEGGIATOR_MODE_OFF;
+    mode_ = ARPEGGIATOR_MODE_UP;
     Reset();
   }
   
@@ -94,11 +89,11 @@ class Arpeggiator{
     }
     
     if (mode_ == ARPEGGIATOR_MODE_UP) {
-      direction_ = 1;
+      direction_ = -1;
     }
 
     if (mode_ == ARPEGGIATOR_MODE_DOWN) {
-      direction_ = -1;
+      direction_ = 1;
     }
     
     note_ += direction_;
@@ -106,15 +101,15 @@ class Arpeggiator{
     bool done = false;
     while (!done) {
       done = true;
-      if (note_ > num_notes || note_ < 0) {
+      if (note_ >= num_notes || note_ < 0) {
         octave_ += direction_;
-        note_= direction_ > 0 ? 1 : num_notes - 1;
+        note_= direction_ > 0 ? 0 : num_notes - 1;
       }
       if (octave_ >= range_ || octave_ < 0) {
         octave_ = direction_ > 0 ? 0 : range_ - 1;
         if (mode_ == ARPEGGIATOR_MODE_UP_DOWN) {
           direction_ = -direction_;
-          note_ = direction_ > 0 ? 2 : num_notes - 2;
+          note_ = direction_ > 0 ? 1 : num_notes - 2;
           octave_ = direction_ > 0 ? 0 : range_ - 1;
           done = false;
         }

@@ -89,14 +89,14 @@ void ChordStringSynth::Process(
   synth.filter_cv = performance_state.filter_cv;
   synth.filter_amount = performance_state.filter_amount;
   synth.active_envelope = performance_state.envelope <= 0.98f;
-  synth.arp.set_mode(ArpeggiatorMode(performance_state.arp));
-  bool arpeggiated = synth.arp.mode() != ARPEGGIATOR_MODE_OFF;
+  bool arpeggiated = performance_state.arp > 0;
 
   if (!arpeggiated) synth.arp.Reset();
   if (performance_state.strum) {
     envelope_flag = ENVELOPE_FLAG_RISING_EDGE;
     if (arpeggiated) {
-      synth.arp.set_range(1);
+      synth.arp.set_mode(ArpeggiatorMode((performance_state.arp - 1) % 4));
+      synth.arp.set_range(static_cast<int>(performance_state.arp >> 2) + 1);
       synth.arp.Clock(chord_size);
     }
   }
@@ -118,11 +118,11 @@ void ChordStringSynth::Process(
       harmonics);
   
   int16_t chord = synth.chord % 12;
-  int cn = synth.arp.note() - 1;
+  int cn = synth.arp.note();
   for (int32_t i = 0; i < chord_size; ++i) {
     int index = clocked ? cn : i;
     float n = genre_chords[bank_ - 1][synth.genre][chord][index];
-    notes[i].note = n - 12.0f;
+    notes[i].note = n - 12.0f * (1 - synth.arp.octave());
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
 
@@ -153,64 +153,6 @@ void ChordStringSynth::Process(
         chord_note & 1 ? out : aux,
         size);
   }
-  /*
-  if (clocked) {
-    float note = 0.0f;
-    int chord_note = synth.arp.note() - 1;
-    note += synth.tonic; // Freq pot root note transpose
-    note += synth.chord_transpose; // Chord transpose
-    note += performance_state.fm;
-    note += notes[chord_note].note; // Chord note
-
-    float frequency = SemitonesToRatio(note - 69.0f) * a3;
-    for (int32_t cn = 0; cn < chord_size; ++cn) {
-      float amplitudes[numHarmonics * 2];
-      for (int32_t i = 0; i < numHarmonics * 2; ++i) {
-        amplitudes[i] = notes[chord_note].amplitude * harmonics[i];
-      }
-      // Fold truncated harmonics.
-      size_t num_harmonics = numHarmonics;
-      for (int32_t i = num_harmonics; i < numHarmonics; ++i) {
-        amplitudes[2 * (num_harmonics - 1)] += amplitudes[2 * i];
-        amplitudes[2 * (num_harmonics - 1) + 1] += amplitudes[2 * i + 1];
-      }
-
-      synth.voice[cn].Render(
-        frequency,
-        amplitudes,
-        num_harmonics,
-        cn & 1 ? out : aux,
-        size);
-    }
-  } else {
-    for (int32_t chord_note = 0; chord_note < chord_size; ++chord_note) {
-      float note = 0.0f;
-      note += synth.tonic; // Freq pot root note transpose
-      note += synth.chord_transpose; // Chord transpose
-      note += performance_state.fm;
-      note += notes[chord_note].note; // Chord note
-      
-      float amplitudes[numHarmonics * 2];
-      for (int32_t i = 0; i < numHarmonics * 2; ++i) {
-        amplitudes[i] = notes[chord_note].amplitude * harmonics[i];
-      }
-      
-      // Fold truncated harmonics.
-      size_t num_harmonics = numHarmonics;
-      for (int32_t i = num_harmonics; i < numHarmonics; ++i) {
-        amplitudes[2 * (num_harmonics - 1)] += amplitudes[2 * i];
-        amplitudes[2 * (num_harmonics - 1) + 1] += amplitudes[2 * i + 1];
-      }
-
-      float frequency = SemitonesToRatio(note - 69.0f) * a3;
-      synth.voice[chord_note].Render(
-          frequency,
-          amplitudes,
-          num_harmonics,
-          chord_note & 1 ? out : aux,
-          size);
-    }
-  }*/
   
   if (clear_fx_) {
     reverb_.Clear();

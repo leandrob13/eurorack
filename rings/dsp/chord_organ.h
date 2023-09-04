@@ -193,7 +193,7 @@ class ChordStringSynth {
   std::fill(&aux[0], &aux[size], 0.0f);
 
   float factor = mode == FILTER_MODE_LOW_PASS ? 0.1f : 0.25f;
-  filter_.set_f_q<FREQUENCY_FAST>(total_mod * factor, 1.75f);
+  filter_.set_f_q<FREQUENCY_FAST>(total_mod * factor, 3.75f);
   float o1;
   for (size_t i = 0; i < size; ++i) {
     o1 = filter_.Process<mode>(filter_in_buffer_[i]);
