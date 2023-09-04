@@ -26,7 +26,7 @@
 //
 // String synth part.
 
-#include "rings/dsp/chord_organ.h"
+#include "rings/dsp/chord_string_synth.h"
 #include "rings/dsp/chords.h"
 #include "rings/dsp/dsp.h"
 

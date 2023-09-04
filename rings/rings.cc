@@ -30,7 +30,7 @@
 #include "rings/drivers/version.h"
 #include "rings/dsp/part.h"
 #include "rings/dsp/strummer.h"
-#include "rings/dsp/chord_organ.h"
+#include "rings/dsp/chord_string_synth.h"
 #include "rings/cv_scaler.h"
 #include "rings/settings.h"
 #include "rings/ui.h"
