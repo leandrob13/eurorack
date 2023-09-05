@@ -89,14 +89,16 @@ void ChordStringSynth::Process(
   synth.filter_cv = performance_state.filter_cv;
   synth.filter_amount = performance_state.filter_amount;
   synth.active_envelope = performance_state.envelope <= 0.98f;
-  bool arpeggiated = performance_state.arp > 0;
+  bool arpeggiated = performance_state.arp != 0;
 
   if (!arpeggiated) synth.arp.Reset();
   if (performance_state.strum) {
     envelope_flag = ENVELOPE_FLAG_RISING_EDGE;
     if (arpeggiated) {
-      synth.arp.set_mode(ArpeggiatorMode((performance_state.arp - 1) % 4));
-      synth.arp.set_range(static_cast<int>(performance_state.arp >> 2) + 1);
+      int range = performance_state.arp < 0 ? 1 : 2;
+      int mode = performance_state.arp < 0 ? -1 * performance_state.arp : performance_state.arp;
+      synth.arp.set_mode(ArpeggiatorMode(mode - 1));
+      synth.arp.set_range(range);
       synth.arp.Clock(chord_size);
     }
   }

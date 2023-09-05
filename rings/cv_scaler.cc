@@ -232,20 +232,19 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   CONSTRAIN(genre_, 0, kNumGenres - 1);
   performance_state->genre = genre_;
 
-  float arp = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_STRUCTURE);
-  arp += calibration_data_->offset[ADC_CHANNEL_CV_STRUCTURE] - \
-      adc_.float_value(ADC_CHANNEL_CV_STRUCTURE); 
+  float arp = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_STRUCTURE) - 0.5f;
+  arp += adc_lp_[ADC_CHANNEL_CV_STRUCTURE];    
   arp *= static_cast<float>(kNumArps - 1);
-  hysteresis = arp - arp_ > 0.0f ? -0.1f : +0.1f;
-  arp_ = static_cast<int32_t>(arp + hysteresis + 0.5f);
-  CONSTRAIN(arp_, 0, kNumArps - 1);
+  arp_ = static_cast<int32_t>(ceil(arp));
+  int32_t half_arps = static_cast<int32_t>(kNumArps / 2);
+  CONSTRAIN(arp_, -1 * half_arps, half_arps);
   performance_state->arp = arp_;
 
   performance_state->envelope = adc_lp_[ADC_CHANNEL_POT_DAMPING];
   performance_state->vca_level = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_DAMPING);
   performance_state->vca_cv = adc_lp_[ADC_CHANNEL_CV_DAMPING];
   performance_state->filter_frequency = adc_lp_[ADC_CHANNEL_POT_POSITION];
-  performance_state->filter_amount = adc_lp_[ADC_CHANNEL_ATTENUVERTER_POSITION];//adc_.float_value(ADC_CHANNEL_ATTENUVERTER_POSITION);
+  performance_state->filter_amount = adc_lp_[ADC_CHANNEL_ATTENUVERTER_POSITION];
   performance_state->filter_cv = adc_lp_[ADC_CHANNEL_CV_POSITION];
   
   adc_.Convert();
