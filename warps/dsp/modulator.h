@@ -55,6 +55,10 @@ const size_t kLessOversampling = 4;
 const size_t kNumOscillators = 1;
 const float kXmodCarrierGain = 0.5f;
 
+static MoogLadderFilter mlf;
+static Reverb reverb;
+static DualFilter df;
+
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
 
@@ -138,10 +142,6 @@ enum XmodAlgorithm {
   ALGORITHM_NOP,
   ALGORITHM_LAST
 };
-
-static MoogLadderFilter mlf;
-static Reverb reverb;
-static DualFilter df;
 
 class Modulator {
  public:
@@ -227,13 +227,13 @@ class Modulator {
   }
 
   void Convert(ShortFrame* output, float* main_output, float* aux_output, float aux_gain, size_t size) {
-    while (size--) {
-    output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
-    output->r = Clip16(static_cast<int32_t>(*aux_output * aux_gain));
-    ++main_output;
-    ++aux_output;
-    ++output;
-  }
+      while (size--) {
+      output->l = Clip16(static_cast<int32_t>(*main_output * 32768.0f));
+      output->r = Clip16(static_cast<int32_t>(*aux_output * aux_gain));
+      ++main_output;
+      ++aux_output;
+      ++output;
+    }
   }
 
   template<XmodAlgorithm algorithm_1, XmodAlgorithm algorithm_2>

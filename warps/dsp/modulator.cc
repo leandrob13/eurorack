@@ -353,25 +353,23 @@ void Modulator::ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_
 
   ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
 
-  // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
-  if (parameters_.carrier_shape) {
-    RenderCarrier(input, carrier, aux_output, size, true);
-  }
-
   float timbre_att = previous_parameters_.raw_modulation;
   float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
-  mlf.SetRes(timbre_att * 5.0f);
-  mlf.SetFreq(algo_exp_att * 4000.0f);
+  mlf.SetRes(timbre_att * 4.0f);
+  mlf.SetFreq(algo_exp_att * 5000.0f);
 
-  ProcessXmod<ALGORITHM_LADDER_FILTER>(
-        previous_parameters_.modulation_algorithm,
-        parameters_.modulation_algorithm,
-        previous_parameters_.skewed_modulation_parameter(),
-        parameters_.skewed_modulation_parameter(),
-        carrier,
-        modulator,
-        main_output,
-        size);
+  if (parameters_.carrier_shape) {
+    RenderCarrier(input, carrier, aux_output, size, true);
+
+    for (size_t i = 0; i < size; i++) {
+      main_output[i] = mlf.Process(carrier[i] + modulator[i]);
+    }
+  } else {
+    for (size_t i = 0; i < size; i++) {
+      main_output[i] = mlf.Process(carrier[i]);
+      aux_output[i] = mlf.Process(modulator[i]);
+    }
+  }
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
@@ -391,16 +389,11 @@ void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t 
   df.SetLayout(layout);
   df.SetFreqsRes(algo_exp_att, previous_parameters_.raw_level_pot[0], timbre_exp_att, previous_parameters_.raw_level_pot[1]);
 
-  ProcessXmod<ALGORITHM_DUAL_FILTER>(
-        previous_parameters_.modulation_algorithm,
-        parameters_.modulation_algorithm,
-        previous_parameters_.skewed_modulation_parameter(),
-        parameters_.skewed_modulation_parameter(),
-        carrier,
-        modulator,
-        main_output,
-        aux_output,
-        size);
+  for (size_t i = 0; i < size; i++) {
+    float* out = df.Process(carrier[i], modulator[i]);
+    main_output[i] = out[0];
+    aux_output[i] = out[1];
+  }
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
@@ -422,16 +415,10 @@ void Modulator::ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size
   reverb.set_diffusion(previous_parameters_.raw_algorithm);
   reverb.set_time(previous_parameters_.modulation_parameter);
 
-  ProcessXmod<ALGORITHM_FX>(
-        previous_parameters_.modulation_algorithm,
-        parameters_.modulation_algorithm,
-        previous_parameters_.skewed_modulation_parameter(),
-        parameters_.skewed_modulation_parameter(),
-        carrier,
-        modulator,
-        main_output,
-        aux_output,
-        size);
+  for (size_t i = 0; i < size; i++) {
+    main_output[i] = carrier[i];
+    aux_output[i] = modulator[i];
+  }
 
   reverb.Process(main_output, aux_output, size);
 
@@ -452,7 +439,6 @@ void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
   ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
 
   // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
-  //RenderCarrier(input, carrier, aux_output, size);
   if (parameters_.carrier_shape) {
     RenderCarrier(input, carrier, aux_output, size);
   }
@@ -850,7 +836,6 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessLadderFilter(input, output, size);
     break;
 
-  
   case FEATURE_MODE_DUAL_FILTER:
     ProcessDualFilter(input, output, size);
     break;
@@ -933,31 +918,6 @@ inline float Modulator::Mod<ALGORITHM_CHEBYSCHEV>(
   }
 
   return (tn1 + (tn - tn1) * n) / amp;
-}
-
-/* static */
-template<>
-inline float Modulator::Xmod<ALGORITHM_LADDER_FILTER>(
-    float x_1, float x_2, float p_1, float p_2) {
-  return mlf.Process(x_1 + x_2);
-}
-
-/* static */
-template<>
-inline float Modulator::Xmod<ALGORITHM_FX>(
-    float x_1, float x_2, float p_1, float p_2, float *out_2) {
-  float res = x_1 + x_2;     
-  *out_2 = res;
-  return res;
-}
-
-/* static */
-template<>
-inline float Modulator::Xmod<ALGORITHM_DUAL_FILTER>(
-    float x_1, float x_2, float p_1, float p_2, float *out_2) {
-  float* out = df.Process(x_1, x_2);
-  *out_2 = out[1];  
-  return out[0];
 }
 
 /* static */

@@ -108,7 +108,7 @@ class Reverb {
         c.Write(ap1, 100, 0.0f);
       }
       
-      c.Read(*left + *right, gain);
+      c.Read(*left, gain);
 
       // Diffuse through 4 allpasses.
       c.Read(ap1 TAIL, kap);
@@ -137,6 +137,19 @@ class Reverb {
       c.Write(wet, 0.0f);
 
       *left += (wet - *left) * amount;
+
+      c.Read(*right, gain);
+
+      // Diffuse through 4 allpasses.
+      c.Read(ap1 TAIL, kap);
+      c.WriteAllPass(ap1, -kap);
+      c.Read(ap2 TAIL, kap);
+      c.WriteAllPass(ap2, -kap);
+      c.Read(ap3 TAIL, kap);
+      c.WriteAllPass(ap3, -kap);
+      c.Read(ap4 TAIL, kap);
+      c.WriteAllPass(ap4, -kap);
+      c.Write(apout);
 
       c.Load(apout);
       if (is_clouds || is_elements) {
