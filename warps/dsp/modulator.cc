@@ -356,7 +356,7 @@ void Modulator::ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_
   float timbre_att = previous_parameters_.raw_modulation;
   float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
   mlf.SetRes(timbre_att * 4.0f);
-  mlf.SetFreq(algo_exp_att * 5000.0f);
+  mlf.SetFreq(algo_exp_att * 2000.0f);
 
   if (parameters_.carrier_shape) {
     RenderCarrier(input, carrier, aux_output, size, true);

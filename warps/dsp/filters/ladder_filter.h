@@ -3,7 +3,7 @@
 #include <cmath>
 
 #define MOOG_PI 3.1415927410125732421875f
-#define VT 0.312
+#define VT 0.312f
 
 namespace warps
 {  
@@ -17,36 +17,42 @@ public:
 	~MoogLadderFilter() { }
 
 	void Init (float sample_rate) {
-		drive = 1.0f;
 		sampleRate = sample_rate;
-		oversample = 2.0f * sampleRate;
 		SetFreq(1000.0f); // normalized cutoff frequency
 		SetRes(0.1f); // [0, 4]
 	}
 	
-	float Process(float in) {
+	float Process(float in, float drive = 1.0f) {
 		float dV0, dV1, dV2, dV3;
 		float double_vt = 2.0f * VT;
-
-		dV0 = -g * (my_tanh((drive * in + resonance * V[3]) / double_vt) + tV[0]);
-		V[0] += (dV0 + dV[0]) / oversample;
+		
+		dV0 = -g * (
+			tanhf(
+			  (drive * in + resonance * V[3]) / double_vt
+			) + tV[0]
+		);
+		/* 
+		   Not oversampling like in the original model in order
+		   to allow the filter to open more at fully CW 
+		*/
+		V[0] += (dV0 + dV[0]) / sampleRate;
 		dV[0] = dV0;
-		tV[0] = my_tanh(V[0] / double_vt);
+		tV[0] = tanhf(V[0] / double_vt);
 		
 		dV1 = g * (tV[0] - tV[1]);
-		V[1] += (dV1 + dV[1]) / oversample;
+		V[1] += (dV1 + dV[1]) / sampleRate;
 		dV[1] = dV1;
-		tV[1] = my_tanh(V[1] / double_vt);
+		tV[1] = tanhf(V[1] / double_vt);
 		
 		dV2 = g * (tV[1] - tV[2]);
-		V[2] += (dV2 + dV[2]) / oversample;
+		V[2] += (dV2 + dV[2]) / sampleRate;
 		dV[2] = dV2;
-		tV[2] = my_tanh(V[2] / double_vt);
+		tV[2] = tanhf(V[2] / double_vt);
 		
 		dV3 = g * (tV[2] - tV[3]);
-		V[3] += (dV3 + dV[3]) / oversample;
+		V[3] += (dV3 + dV[3]) / sampleRate;
 		dV[3] = dV3;
-		tV[3] = my_tanh(V[3] / double_vt);
+		tV[3] = tanhf(V[3] / double_vt);
 		
 		return V[3];
 	}
@@ -69,16 +75,9 @@ private:
 	
 	float x;
 	float g;
-	float drive;
 	float cutoff;
 	float resonance;
 	float sampleRate;
-	float oversample;
-
-	float my_tanh(float x) {
-		float x2 = x * x;
-		return x * (27.0f + x2) / (27.0f + 9.0f * x2);
-	}
 };
 }
 
