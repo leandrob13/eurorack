@@ -43,8 +43,8 @@ DebugPort debug_port;
 Modulator modulator;
 Settings settings;
 Ui ui;
-const float kSampleRate = 48000.0f; 
-//const float kSampleRate = 96000.0f;
+//const float kSampleRate = 48000.0f; 
+const float kSampleRate = 96000.0f;
 
 uint16_t reverb_buffer[32768] __attribute__ ((section (".ccmdata")));
 
