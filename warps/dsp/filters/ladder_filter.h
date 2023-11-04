@@ -17,7 +17,7 @@ public:
 	~MoogLadderFilter() { }
 
 	void Init (float sample_rate) {
-		sampleRate = sample_rate;
+		sampleRate = sample_rate / 2.0f;
 		SetFreq(1000.0f); // normalized cutoff frequency
 		SetRes(0.1f); // [0, 4]
 	}
@@ -27,7 +27,7 @@ public:
 		float double_vt = 2.0f * VT;
 		
 		dV0 = -g * (
-			tanhf(
+			my_tanh(
 			  (drive * in + resonance * V[3]) / double_vt
 			) + tV[0]
 		);
@@ -37,22 +37,22 @@ public:
 		*/
 		V[0] += (dV0 + dV[0]) / sampleRate;
 		dV[0] = dV0;
-		tV[0] = tanhf(V[0] / double_vt);
+		tV[0] = my_tanh(V[0] / double_vt);
 		
 		dV1 = g * (tV[0] - tV[1]);
 		V[1] += (dV1 + dV[1]) / sampleRate;
 		dV[1] = dV1;
-		tV[1] = tanhf(V[1] / double_vt);
+		tV[1] = my_tanh(V[1] / double_vt);
 		
 		dV2 = g * (tV[1] - tV[2]);
 		V[2] += (dV2 + dV[2]) / sampleRate;
 		dV[2] = dV2;
-		tV[2] = tanhf(V[2] / double_vt);
+		tV[2] = my_tanh(V[2] / double_vt);
 		
 		dV3 = g * (tV[2] - tV[3]);
 		V[3] += (dV3 + dV[3]) / sampleRate;
 		dV[3] = dV3;
-		tV[3] = tanhf(V[3] / double_vt);
+		tV[3] = my_tanh(V[3] / double_vt);
 		
 		return V[3];
 	}
@@ -78,6 +78,11 @@ private:
 	float cutoff;
 	float resonance;
 	float sampleRate;
+
+	float my_tanh(float x) {
+		float x2 = x * x;
+		return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+	}
 };
 }
 
