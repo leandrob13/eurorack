@@ -98,7 +98,7 @@ void Init() {
   
   ui.Init(&settings, &cv_scaler, &modulator);
   
-  if (!codec.Init(!version.revised(), 48000)) {
+  if (!codec.Init(!version.revised(), kSampleRate)) {
     ui.Panic();
   }
   if (!codec.Start(60, &FillBuffer)) {
