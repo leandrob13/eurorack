@@ -432,9 +432,9 @@ void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
-  float* oversampled_carrier = src_buffer_[0];
-  float* oversampled_modulator = src_buffer_[1];
-  float* oversampled_output = src_buffer_[0];
+  //float* oversampled_carrier = src_buffer_[0];
+  //float* oversampled_modulator = src_buffer_[1];
+  //float* oversampled_output = src_buffer_[0];
 
   ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
 
@@ -443,20 +443,20 @@ void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
     RenderCarrier(input, carrier, aux_output, size);
   }
 
-  src_up2_[0].Process(carrier, oversampled_carrier, size);
-  src_up2_[1].Process(modulator, oversampled_modulator, size);
+  //src_up2_[0].Process(carrier, oversampled_carrier, size);
+  //src_up2_[1].Process(modulator, oversampled_modulator, size);
 
   ProcessXmod<algorithm>(
         previous_parameters_.modulation_algorithm,
         parameters_.modulation_algorithm,
         previous_parameters_.skewed_modulation_parameter(),
         parameters_.skewed_modulation_parameter(),
-        oversampled_modulator,
-        oversampled_carrier,
-        oversampled_output,
-        size * kLessOversampling);
+        modulator, //oversampled_modulator,
+        carrier, //oversampled_carrier,
+        main_output, //oversampled_output,
+        size); //size * kLessOversampling);
 
-  src_down2_[0].Process(oversampled_output, main_output, size * kLessOversampling);
+  //src_down2_[0].Process(oversampled_output, main_output, size * kLessOversampling);
 
   Convert(output, main_output, aux_output, 16384.0f, size);
   previous_parameters_ = parameters_;
