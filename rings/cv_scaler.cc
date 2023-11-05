@@ -235,7 +235,7 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   float arp = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_STRUCTURE) - 0.5f;
   arp += adc_lp_[ADC_CHANNEL_CV_STRUCTURE];    
   arp *= static_cast<float>(kNumArps - 1);
-  arp_ = static_cast<int32_t>(ceil(arp));
+  arp_ = static_cast<int32_t>(arp);
   int32_t half_arps = static_cast<int32_t>(kNumArps / 2);
   CONSTRAIN(arp_, -1 * half_arps, half_arps);
   performance_state->arp = arp_;
