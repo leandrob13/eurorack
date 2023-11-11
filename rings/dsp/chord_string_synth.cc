@@ -80,7 +80,10 @@ void ChordStringSynth::Process(
   note_filter_.Process(performance_state.note, performance_state.strum);
 
   synth.tonic = performance_state.tonic;
-  synth.chord = static_cast<int16_t>(ceil(note_filter_.note()));
+  float fnote = note_filter_.note();
+  float hysteresis = fnote - fnote_ > 0.0f ? -0.05f : +0.05f;
+  fnote_ = fnote + hysteresis + 0.25f;
+  synth.chord = static_cast<int16_t>(ceil(fnote_));
   synth.chord_transpose = static_cast<int16_t>(synth.chord / 12) * 12.0f;
   synth.genre = performance_state.genre;
   synth.vca_level = performance_state.vca_level;
@@ -124,7 +127,8 @@ void ChordStringSynth::Process(
   for (int32_t i = 0; i < chord_size; ++i) {
     int index = clocked ? cn : i;
     float n = genre_chords[bank_ - 1][synth.genre][chord][index];
-    notes[i].note = n - 12.0f * (1 - synth.arp.octave());
+    float oct_down = (bank_ == 1 && synth.genre < 3) ? 12.0f : 24.0f; 
+    notes[i].note = n - oct_down * (1 - synth.arp.octave());
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
 

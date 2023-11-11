@@ -229,7 +229,7 @@ class ChordStringSynth {
   
   float filter_in_buffer_[kMaxBlockSize];
   float filter_out_buffer_[kMaxBlockSize];
-  
+  float fnote_;
   bool clear_fx_;
   
   DISALLOW_COPY_AND_ASSIGN(ChordStringSynth);
