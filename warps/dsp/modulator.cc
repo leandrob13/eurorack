@@ -58,7 +58,6 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   vocoder_oscillator_.Init(sample_rate);
   quadrature_oscillator_.Init(sample_rate);
   vocoder_.Init(sample_rate);
-  //mlf.Init(sample_rate);
   df.Init();
   reverb.Init(reverb_buffer);
   ensemble.Init(reverb_buffer);
@@ -406,7 +405,7 @@ void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t si
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
 
-  ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
+  ApplyAmplification(input, parameters_.channel_drive, aux_output, size, true);
   ensemble.set_amount(previous_parameters_.modulation_parameter);
   ensemble.set_depth(0.35f + 0.65f * previous_parameters_.modulation_parameter);
 
@@ -417,6 +416,10 @@ void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t si
     previous_parameters_.raw_algorithm, 
     0.0f
   );
+
+  if (parameters_.carrier_shape) {
+    RenderCarrier(input, carrier, aux_output, size, true, true, parameters_.raw_level[1]);
+  }
 
   for (size_t i = 0; i < size; i++) {
     float* out = df.Process(carrier[i], modulator[i]);

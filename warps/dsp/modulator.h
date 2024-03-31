@@ -187,14 +187,6 @@ class Modulator {
   }
 
  private:
-  /*
-  float exp_amp(float x)
-  {
-      // Clamp x to the range [0, 1]
-      x = fminf(fmaxf(x, 0.0f), 1.0f);
-      // Compute the amplification using an exponential function
-      return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
-  }*/
 
   void ApplyAmplification(ShortFrame* input, float* level, float* aux_output, size_t size, bool raw_level) {
     if (!parameters_.carrier_shape || raw_level) {
@@ -202,19 +194,28 @@ class Modulator {
     }
     // Convert audio inputs to float and apply VCA/saturation (5.8% per channel)
     short* input_samples = &input->l;
+    
     for (int32_t i = (parameters_.carrier_shape && !raw_level) ? 1 : 0; i < 2; ++i) {
-        amplifier_[i].Process(
-            level[i],
-            1.0f,
-            input_samples + i,
-            buffer_[i],
-            aux_output,
-            2,
-            size);
+      amplifier_[i].Process(
+          level[i],
+          1.0f,
+          input_samples + i,
+          buffer_[i],
+          aux_output,
+          2,
+          size);
     }
   }
 
-  void RenderCarrier(ShortFrame* input, float* carrier, float* aux_output, size_t size, bool exclude_sine = false) {
+  void RenderCarrier(
+    ShortFrame* input, 
+    float* carrier, 
+    float* aux_output, 
+    size_t size, 
+    bool exclude_sine = false, 
+    bool amp_control = false, 
+    float level = 0.5f
+  ) {
     // Scale phase-modulation input.
       for (size_t i = 0; i < size; ++i) {
         internal_modulation_[i] = static_cast<float>(input[i].l) / 32768.0f;
@@ -223,13 +224,14 @@ class Modulator {
       OscillatorShape xmod_shape = static_cast<OscillatorShape>(
           parameters_.carrier_shape - (exclude_sine ? 0 : 1));
       xmod_oscillator_.Render(
-            xmod_shape,
-            parameters_.note,
-            internal_modulation_,
-            aux_output,
-            size);
+        xmod_shape,
+        parameters_.note,
+        internal_modulation_,
+        aux_output,
+        size);
+
       for (size_t i = 0; i < size; ++i) {
-        carrier[i] = aux_output[i] * 0.75f;
+        carrier[i] = aux_output[i] * (amp_control ? level : 0.75f);
       }
   }
 
