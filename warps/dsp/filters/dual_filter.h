@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <math.h>
 #include "stmlib/dsp/filter.h"
+#include "stmlib/dsp/units.h"
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define PI_F 3.1415927410125732421875f
@@ -18,7 +19,8 @@ typedef enum FilterLayout {
     LP_HP,
     LP_BP,
     BP_HP,
-    BP_BP
+    BP_BP,
+    LP_LP
 } FilterLayout;
 
 class DualFilter
@@ -30,6 +32,8 @@ class DualFilter
         filterL_.Init();
         filterR_.Init();
         layout_ = LP_HP;
+        float a0 = (440.0f / 8.0f) / 96000.0f;
+        f0 = a0 * 0.25f * SemitonesToRatio(12.0f);
     }
 
     float* Process(float inL, float inR) {
@@ -63,6 +67,10 @@ class DualFilter
                 }
                 break;
             default:
+                {
+                    out[0] = filterL_.Process<FILTER_MODE_LOW_PASS>(inL);
+                    out[1] = filterR_.Process<FILTER_MODE_LOW_PASS>(inR);
+                }
                 break;
         }
         
@@ -70,10 +78,10 @@ class DualFilter
     }
 
     void SetFreqsRes(float fl, float rl, float fr, float rr) {
-        float l_factor = (layout_ == LP_HP || layout_ == LP_BP) ? 0.1f : 0.25f;
-        float r_factor = (layout_ == BP_BP || layout_ == LP_BP) ? 0.25f : 0.04f;
-        filterL_.set_f_q<FREQUENCY_FAST>(fl * l_factor, 15.0f * rl + 0.25f);
-        filterR_.set_f_q<FREQUENCY_FAST>(fr * r_factor, 15.0f * rr + 0.25f);
+        float l_cutoff = 2.2f * f0 * SemitonesToRatio(120.0f * fl);
+        float r_cutoff = 2.2f * f0 * SemitonesToRatio(120.0f * fr);
+        filterL_.set_f_q<FREQUENCY_DIRTY>(l_cutoff, 5.0f * rl + 0.25f);
+        filterR_.set_f_q<FREQUENCY_DIRTY>(r_cutoff, 5.0f * rr + 0.25f);
     }
 
     void SetLayout(FilterLayout value) {
@@ -84,6 +92,7 @@ class DualFilter
     Svf filterL_;
     Svf filterR_;
     FilterLayout layout_;
+    float f0;
 };
 
 } // namespace warps

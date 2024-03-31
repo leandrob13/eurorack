@@ -58,9 +58,10 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   vocoder_oscillator_.Init(sample_rate);
   quadrature_oscillator_.Init(sample_rate);
   vocoder_.Init(sample_rate);
-  mlf.Init(sample_rate);
+  //mlf.Init(sample_rate);
   df.Init();
   reverb.Init(reverb_buffer);
+  ensemble.Init(reverb_buffer);
 
   previous_parameters_.carrier_shape = 0;
   previous_parameters_.channel_drive[0] = 0.0f;
@@ -345,36 +346,6 @@ void Modulator::ProcessMeta(
   previous_parameters_ = parameters_;
 }
 
-void Modulator::ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_t size) {
-  float* carrier = buffer_[0];
-  float* modulator = buffer_[1];
-  float* main_output = buffer_[0];
-  float* aux_output = buffer_[2];
-
-  ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
-
-  float timbre_att = previous_parameters_.raw_modulation;
-  float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
-  mlf.SetRes(timbre_att * 4.0f);
-  mlf.SetFreq(algo_exp_att * 2500.0f);
-
-  if (parameters_.carrier_shape) {
-    RenderCarrier(input, carrier, aux_output, size, true);
-
-    for (size_t i = 0; i < size; i++) {
-      main_output[i] = mlf.Process(carrier[i] + modulator[i]);
-    }
-  } else {
-    for (size_t i = 0; i < size; i++) {
-      main_output[i] = mlf.Process(carrier[i]);
-      aux_output[i] = mlf.Process(modulator[i]);
-    }
-  }
-
-  Convert(output, main_output, aux_output, 32768.0f, size);
-  previous_parameters_ = parameters_;
-}
-
 void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
@@ -382,12 +353,15 @@ void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t 
   float* aux_output = buffer_[2];
 
   ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
-
-  float algo_exp_att = exp_amp(previous_parameters_.raw_algorithm);
-  float timbre_exp_att = exp_amp(previous_parameters_.raw_modulation);
+  
   FilterLayout layout = static_cast<FilterLayout>(parameters_.carrier_shape);
   df.SetLayout(layout);
-  df.SetFreqsRes(algo_exp_att, previous_parameters_.raw_level_pot[0], timbre_exp_att, previous_parameters_.raw_level_pot[1]);
+  df.SetFreqsRes(
+    previous_parameters_.raw_algorithm, 
+    previous_parameters_.raw_level_pot[0], 
+    previous_parameters_.raw_modulation, 
+    previous_parameters_.raw_level_pot[1]
+  );
 
   for (size_t i = 0; i < size; i++) {
     float* out = df.Process(carrier[i], modulator[i]);
@@ -421,6 +395,36 @@ void Modulator::ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size
   }
 
   reverb.Process(main_output, aux_output, size);
+
+  Convert(output, main_output, aux_output, 32768.0f, size);
+  previous_parameters_ = parameters_;
+}
+
+void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size) {
+  float* carrier = buffer_[0];
+  float* modulator = buffer_[1];
+  float* main_output = buffer_[0];
+  float* aux_output = buffer_[2];
+
+  ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
+  ensemble.set_amount(previous_parameters_.modulation_parameter);
+  ensemble.set_depth(0.35f + 0.65f * previous_parameters_.modulation_parameter);
+
+  df.SetLayout(LP_LP);
+  df.SetFreqsRes(
+    previous_parameters_.raw_algorithm, 
+    0.0f, 
+    previous_parameters_.raw_algorithm, 
+    0.0f
+  );
+
+  for (size_t i = 0; i < size; i++) {
+    float* out = df.Process(carrier[i], modulator[i]);
+    main_output[i] = out[0];
+    aux_output[i] = out[1];
+  }
+
+  ensemble.Process(main_output, aux_output, size);
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
@@ -829,11 +833,16 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     copy(&input[0], &input[size], &output[0]);
     return;
   }
+  if (reset_reverb) {
+    reverb.Clear();
+    reset_reverb = false;
+  }
+  
 
   switch (feature_mode_) {
 
-  case FEATURE_MODE_LADDER_FILTER:
-    ProcessLadderFilter(input, output, size);
+  case FEATURE_MODE_ENSEMBLE:
+    ProcessEnsemble(input, output, size);
     break;
 
   case FEATURE_MODE_DUAL_FILTER:

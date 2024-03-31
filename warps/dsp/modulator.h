@@ -41,9 +41,9 @@
 #include "warps/dsp/sample_rate_converter.h"
 #include "warps/dsp/vocoder.h"
 #include "warps/resources.h"
-#include "warps/dsp/filters/ladder_filter.h"
 #include "warps/dsp/filters/dual_filter.h"
 #include "warps/dsp/fx/reverb.h"
+#include "warps/dsp/fx/ensemble.h"
 
 namespace warps {
 
@@ -55,9 +55,9 @@ const size_t kLessOversampling = 4;
 const size_t kNumOscillators = 1;
 const float kXmodCarrierGain = 0.5f;
 
-static MoogLadderFilter mlf;
 static Reverb reverb;
 static DualFilter df;
+static Ensemble ensemble;
 
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
@@ -168,6 +168,7 @@ class Modulator {
   void ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
@@ -177,17 +178,23 @@ class Modulator {
   inline void set_bypass(bool bypass) { bypass_ = bypass; }
 
   inline FeatureMode feature_mode() const { return feature_mode_; }
-  inline void set_feature_mode(FeatureMode feature_mode) { feature_mode_ = feature_mode; }
+  inline void set_feature_mode(FeatureMode feature_mode) { 
+    if (feature_mode_ == FEATURE_MODE_REVERB && feature_mode != FEATURE_MODE_REVERB) {
+      reset_reverb = true;
+    }
+    
+    feature_mode_ = feature_mode; 
+  }
 
  private:
-
+  /*
   float exp_amp(float x)
   {
       // Clamp x to the range [0, 1]
       x = fminf(fmaxf(x, 0.0f), 1.0f);
       // Compute the amplification using an exponential function
       return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
-  }
+  }*/
 
   void ApplyAmplification(ShortFrame* input, float* level, float* aux_output, size_t size, bool raw_level) {
     if (!parameters_.carrier_shape || raw_level) {
@@ -362,7 +369,7 @@ class Modulator {
   static float Diode(float x);
   
   bool bypass_;
-
+  bool reset_reverb;
   FeatureMode feature_mode_;
 
   Parameters parameters_;
