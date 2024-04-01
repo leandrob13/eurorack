@@ -2,18 +2,18 @@
 const float genre_chords[4][25][12][4] = {
     {
         {   //Oct Stack1
-            { 24.14f, 12.24f, 12.26f, 0.0f }, //Oct Stack C
-            { 25.20f, 13.47f, 13.27f, 1.0f }, //Oct Stack C#
-            { 26.18f, 14.37f, 14.41f, 2.0f }, //Oct Stack D
-            { 27.35f, 15.30f, 15.18f, 3.0f }, //Oct Stack D#
-            { 28.10f, 16.38f, 16.10f, 4.0f }, //Oct Stack E
-            { 29.49f, 17.26f, 17.18f, 5.0f }, //Oct Stack F
-            { 30.10f, 18.15f, 18.44f, 6.0f }, //Oct Stack F#
-            { 31.30f, 19.27f, 19.10f, 7.0f }, //Oct Stack G
-            { 32.11f, 20.46f, 20.38f, 8.0f }, //Oct Stack G#
-            { 33.12f, 21.34f, 21.24f, 9.0f }, //Oct Stack A
-            { 34.47f, 22.50f, 22.45f, 10.0f }, //Oct Stack A#
-            { 35.41f, 23.31f, 23.20f, 11.0f } //Oct Stack B
+            { 0.14f, 12.24f, 12.26f, 0.0f }, //Oct Stack C
+            { 1.20f, 13.47f, 13.27f, 1.0f }, //Oct Stack C#
+            { 2.18f, 14.37f, 14.41f, 2.0f }, //Oct Stack D
+            { 3.35f, 15.30f, 15.18f, 3.0f }, //Oct Stack D#
+            { 4.10f, 16.38f, 16.10f, 4.0f }, //Oct Stack E
+            { 5.49f, 17.26f, 17.18f, 5.0f }, //Oct Stack F
+            { 6.10f, 18.15f, 18.44f, 6.0f }, //Oct Stack F#
+            { 7.30f, 19.27f, 19.10f, 7.0f }, //Oct Stack G
+            { 8.11f, 20.46f, 20.38f, 8.0f }, //Oct Stack G#
+            { 9.12f, 21.34f, 21.24f, 9.0f }, //Oct Stack A
+            { 10.47f, 22.50f, 22.45f, 10.0f }, //Oct Stack A#
+            { 11.41f, 23.31f, 23.20f, 11.0f } //Oct Stack B
         },
         {   //4th Stack1
             { 17.43f, 12.11f, 5.16f, 0.0f }, //4th Stack C

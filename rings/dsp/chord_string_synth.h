@@ -30,9 +30,7 @@
 #define RINGS_DSP_STRING_SYNTH_PART_H_
 
 #include "stmlib/stmlib.h"
-
 #include "stmlib/dsp/filter.h"
-
 #include "rings/dsp/dsp.h"
 #include "rings/dsp/fx/chorus.h"
 #include "rings/dsp/fx/ensemble.h"
@@ -147,10 +145,11 @@ class ChordStringSynth {
   return value;
 }
   
-  void ComputeRegistration(
-    float gain,
-    float registration,
-    float* amplitudes) {
+void ComputeRegistration(
+  float gain,
+  float registration,
+  float* amplitudes
+) {
   registration *= (kRegistrationTableSize - 1.001f);
   MAKE_INTEGRAL_FRACTIONAL(registration);
   float total = 0.0f;
@@ -171,49 +170,49 @@ class ChordStringSynth {
   }
 }
 
-  template<FilterMode mode>
-  void ProcessFilter(
-    float envelope,
-    float* out,
-    float* aux,
-    size_t size) {
-
-  for (size_t i = 0; i < size; ++i) {
-    filter_in_buffer_[i] = out[i] + aux[i];
-  }
-
-  float exp_freq = exp_amp(synth.filter_frequency);    
-  float modulation = synth.active_envelope ? 
-      (envelope + synth.filter_cv) * synth.filter_amount : 
-      synth.filter_cv * synth.filter_amount;
-
-  float total_mod = exp_freq + modulation;
-  CONSTRAIN(total_mod, 0.0f, 1.0f);
-  std::fill(&out[0], &out[size], 0.0f);
-  std::fill(&aux[0], &aux[size], 0.0f);
-
-  float factor = mode == FILTER_MODE_LOW_PASS ? 0.1f : 0.25f;
-  filter_.set_f_q<FREQUENCY_FAST>(total_mod * factor, 3.75f);
-  float o1;
-  for (size_t i = 0; i < size; ++i) {
-    o1 = filter_.Process<mode>(filter_in_buffer_[i]);
-    filter_out_buffer_[i] = mode == FILTER_MODE_LOW_PASS ? filter_.Process<mode>(o1) : o1;
-  }
-        
-  for (size_t j = 0; j < size; ++j) {
-    out[j] += filter_out_buffer_[j] * 0.5f;
-    aux[j] += filter_out_buffer_[j] * 0.5f;
-  }
+inline float NoteToFrequency(float midi_note) {
+  midi_note -= 9.0f;
+  CONSTRAIN(midi_note, -128.0f, 127.0f);
+  return a3 * 0.25f * SemitonesToRatio(midi_note);
 }
 
-  float exp_amp(float x) {
-    // Clamp x to the range [0, 1]
-    x = fminf(fmaxf(x, 0.0f), 1.0f);
-    // Compute the amplification using an exponential function
-    return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
-  }
-  
-  
+template<FilterMode mode>
+void ProcessFilter(
+  float envelope,
+  float* out,
+  float* aux,
+  size_t size
+) {
+
+    for (size_t i = 0; i < size; ++i) {
+      filter_in_buffer_[i] = out[i] + aux[i];
+    }
+
+    float f0 = NoteToFrequency(synth.tonic - 69.0f);
+    float cutoff = 2.0f * f0 * SemitonesToRatio(120.0f * synth.filter_frequency);
+    
+    float modulation = synth.active_envelope ? 
+        (envelope + synth.filter_cv) * synth.filter_amount : 
+        synth.filter_cv * synth.filter_amount;
+
+    float total_mod = cutoff + modulation;
+    CONSTRAIN(total_mod, 0.0f, 1.0f);
+    std::fill(&out[0], &out[size], 0.0f);
+    std::fill(&aux[0], &aux[size], 0.0f);
+
+    filter_.set_f_q<FREQUENCY_FAST>(total_mod, 0.25f);
+    float o1;
+    for (size_t i = 0; i < size; ++i) {
+      o1 = filter_.Process<mode>(filter_in_buffer_[i]);
+      filter_out_buffer_[i] = mode == FILTER_MODE_LOW_PASS ? filter_.Process<mode>(o1) : o1;
+    }
+          
+    for (size_t j = 0; j < size; ++j) {
+      out[j] += filter_out_buffer_[j] * 0.5f;
+      aux[j] += filter_out_buffer_[j] * 0.5f;
+    }
+}
+
   Synth synth;
   
   stmlib::Svf filter_;
