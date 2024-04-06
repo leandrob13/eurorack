@@ -30,10 +30,7 @@
 #define WARPS_DSP_FX_ENSEMBLE_H_
 
 #include "stmlib/stmlib.h"
-
 #include "stmlib/dsp/dsp.h"
-
-//#include "plaits/dsp/oscillator/sine_oscillator.h"
 #include "warps/dsp/fx/fx_engine.h"
 #include "warps/resources.h"
 
@@ -110,7 +107,7 @@ class Ensemble {
       right++;
     }
   }
-  
+
   inline void set_amount(float amount) {
     amount_ = amount;
   }
@@ -129,12 +126,12 @@ class Ensemble {
   uint32_t phase_2_;
 
   inline float SineRaw(uint32_t phase) {
-    return lut_sin[phase >> (32 - 9)];
+    return lut_sin[phase >> (32 - 10)];
   }
   
   DISALLOW_COPY_AND_ASSIGN(Ensemble);
 };
 
-}  // namespace plaits
+}  // namespace warps
 
-#endif  // PLAITS_DSP_FX_ENSEMBLE_H_
+#endif  // WARPS_DSP_FX_ENSEMBLE_H_

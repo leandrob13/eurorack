@@ -345,23 +345,40 @@ void Modulator::ProcessMeta(
   previous_parameters_ = parameters_;
 }
 
-void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size) {
+void Modulator::ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size, FilterConfig config) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
-
-  ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
   
-  FilterLayout layout = static_cast<FilterLayout>(parameters_.carrier_shape);
-  df.SetLayout(layout);
-  df.SetFreqsRes(
-    previous_parameters_.raw_algorithm, 
-    previous_parameters_.raw_level_pot[0], 
-    previous_parameters_.raw_modulation, 
-    previous_parameters_.raw_level_pot[1]
-  );
-
+  df.SetConfig(config);
+  df.SetLayout(parameters_.carrier_shape);
+  switch (config)
+  {
+  case DUAL_FILTER:
+    {
+      ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
+      df.SetFreqsRes(
+        previous_parameters_.raw_algorithm, 
+        previous_parameters_.raw_level_pot[0], 
+        previous_parameters_.raw_modulation, 
+        previous_parameters_.raw_level_pot[1]
+      );
+    }
+    break;
+  default:
+    {
+      ApplyAmplification(input, parameters_.channel_drive, aux_output, size, true);
+      df.SetFreqsRes(
+        previous_parameters_.raw_algorithm, 
+        previous_parameters_.raw_modulation / 1.5f, 
+        previous_parameters_.raw_algorithm, 
+        previous_parameters_.raw_modulation / 1.5f
+      );
+    }
+    break;
+  }
+  
   for (size_t i = 0; i < size; i++) {
     float* out = df.Process(carrier[i], modulator[i]);
     main_output[i] = out[0];
@@ -406,10 +423,9 @@ void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t si
   float* aux_output = buffer_[2];
 
   ApplyAmplification(input, parameters_.channel_drive, aux_output, size, true);
-  ensemble.set_amount(previous_parameters_.modulation_parameter);
-  ensemble.set_depth(0.35f + 0.65f * previous_parameters_.modulation_parameter);
+  
 
-  df.SetLayout(LP_LP);
+  df.SetLayout(LP);
   df.SetFreqsRes(
     previous_parameters_.raw_algorithm, 
     0.0f, 
@@ -427,14 +443,16 @@ void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t si
     aux_output[i] = out[1];
   }
 
+  float depth = 0.35f + 0.65f * previous_parameters_.modulation_parameter;
+  ensemble.set_amount(previous_parameters_.modulation_parameter);
+  ensemble.set_depth(depth);
   ensemble.Process(main_output, aux_output, size);
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
 }
 
-template<XmodAlgorithm algorithm>
-void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
+void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
@@ -453,7 +471,7 @@ void Modulator::Process1(ShortFrame* input, ShortFrame* output, size_t size) {
   //src_up2_[0].Process(carrier, oversampled_carrier, size);
   //src_up2_[1].Process(modulator, oversampled_modulator, size);
 
-  ProcessXmod<algorithm>(
+  ProcessXmod<ALGORITHM_CHEBYSCHEV>(
         previous_parameters_.modulation_algorithm,
         parameters_.modulation_algorithm,
         previous_parameters_.skewed_modulation_parameter(),
@@ -840,16 +858,15 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     reverb.Clear();
     reset_reverb = false;
   }
-  
 
   switch (feature_mode_) {
 
-  case FEATURE_MODE_ENSEMBLE:
-    ProcessEnsemble(input, output, size);
+  case FEATURE_MODE_DUAL_FILTER:
+    ProcessDualFilter(input, output, size, alt_feature_mode_ ? DUAL_FILTER : STEREO_FILTER);
     break;
 
-  case FEATURE_MODE_DUAL_FILTER:
-    ProcessDualFilter(input, output, size);
+  case FEATURE_MODE_ENSEMBLE:
+    ProcessEnsemble(input, output, size);
     break;
 
   case FEATURE_MODE_REVERB:
@@ -865,7 +882,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     break;
 
   case FEATURE_MODE_CHEBYSCHEV: 
-    Process1<ALGORITHM_CHEBYSCHEV>(input, output, size);
+    ProcessChebyschev(input, output, size);
     break;
 
   case FEATURE_MODE_DOPPLER:
@@ -934,6 +951,38 @@ inline float Modulator::Mod<ALGORITHM_CHEBYSCHEV>(
 
 /* static */
 template<>
+inline float Modulator::Xmod<ALGORITHM_BITCRUSHER>(
+    float x_1, float x_2, float p_1, float p_2, float *y_2) {
+  short x_1_short = Clip16(static_cast<int32_t>(x_1 * 32768.0f));
+  short x_2_short = Clip16(static_cast<int32_t>(x_2 * 32768.0f));
+
+  const float steps = 37.0f;
+  float z = p_1 * p_1 * steps;
+  MAKE_INTEGRAL_FRACTIONAL(z);
+
+  short z_short_1 = Clip16(static_cast<int32_t>(z_integral/steps * 32768.0f));
+  short z_short_2 = Clip16(static_cast<int32_t>((z_integral + 1.0f)/steps * 32768.0f));
+
+  short x_1_mod_1 = x_1_short | z_short_1;
+  short x_1_mod_2 = x_1_short | z_short_2;
+  short x_1_mod = x_1_mod_1 + (x_1_mod_2 - x_1_mod_1) * z_fractional;
+
+  short x_2_mod_1 = x_2_short | z_short_1;
+  short x_2_mod_2 = x_2_short | z_short_2;
+  short x_2_mod = x_2_mod_1 + (x_2_mod_2 - x_2_mod_1) * z_fractional;
+
+  *y_2 = static_cast<float>(x_1_mod) / 32768.0f;
+
+  float ops[4];
+  ops[0] = static_cast<float>(x_1_mod + x_2_mod) / 32768.0f;
+  ops[1] = static_cast<float>(x_1_mod | x_2_mod) / 32768.0f;
+  ops[2] = static_cast<float>(x_1_mod ^ x_2_mod) / 32768.0f;
+  ops[3] = static_cast<float>(x_1_mod << (x_2_mod >> 12)) / 32768.0f;
+  return Interpolate(ops, p_2, 3.0f);
+}
+
+/* static */
+template<>
 inline float Modulator::Xmod<ALGORITHM_FOLD>(
     float x_1, float x_2, float parameter) {
   float sum = 0.0f;
@@ -981,38 +1030,6 @@ inline float Modulator::Xmod<ALGORITHM_XOR>(
   float mod = static_cast<float>(x_1_short ^ x_2_short) / 32768.0f;
   float sum = (x_1 + x_2) * 0.7f;
   return sum + (mod - sum) * parameter;
-}
-
-/* static */
-template<>
-inline float Modulator::Xmod<ALGORITHM_BITCRUSHER>(
-    float x_1, float x_2, float p_1, float p_2, float *y_2) {
-  short x_1_short = Clip16(static_cast<int32_t>(x_1 * 32768.0f));
-  short x_2_short = Clip16(static_cast<int32_t>(x_2 * 32768.0f));
-
-  const float steps = 37.0f;
-  float z = p_1 * p_1 * steps;
-  MAKE_INTEGRAL_FRACTIONAL(z);
-
-  short z_short_1 = Clip16(static_cast<int32_t>(z_integral/steps * 32768.0f));
-  short z_short_2 = Clip16(static_cast<int32_t>((z_integral + 1.0f)/steps * 32768.0f));
-
-  short x_1_mod_1 = x_1_short | z_short_1;
-  short x_1_mod_2 = x_1_short | z_short_2;
-  short x_1_mod = x_1_mod_1 + (x_1_mod_2 - x_1_mod_1) * z_fractional;
-
-  short x_2_mod_1 = x_2_short | z_short_1;
-  short x_2_mod_2 = x_2_short | z_short_2;
-  short x_2_mod = x_2_mod_1 + (x_2_mod_2 - x_2_mod_1) * z_fractional;
-
-  *y_2 = static_cast<float>(x_1_mod) / 32768.0f;
-
-  float ops[4];
-  ops[0] = static_cast<float>(x_1_mod + x_2_mod) / 32768.0f;
-  ops[1] = static_cast<float>(x_1_mod | x_2_mod) / 32768.0f;
-  ops[2] = static_cast<float>(x_1_mod ^ x_2_mod) / 32768.0f;
-  ops[3] = static_cast<float>(x_1_mod << (x_2_mod >> 12)) / 32768.0f;
-  return Interpolate(ops, p_2, 3.0f);
 }
 
 /* static */

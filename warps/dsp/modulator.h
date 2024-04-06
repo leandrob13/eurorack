@@ -136,9 +136,6 @@ enum XmodAlgorithm {
   ALGORITHM_COMPARATOR,
   ALGORITHM_CHEBYSCHEV,
   ALGORITHM_BITCRUSHER,
-  ALGORITHM_LADDER_FILTER,
-  ALGORITHM_DUAL_FILTER,
-  ALGORITHM_FX,
   ALGORITHM_NOP,
   ALGORITHM_LAST
 };
@@ -160,13 +157,11 @@ class Modulator {
 
   void Init(float sample_rate, uint16_t* reverb_buffer);
   void Process(ShortFrame* input, ShortFrame* output, size_t size);
-  template<XmodAlgorithm algorithm>
-  void Process1(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessFreqShifter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessLadderFilter(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size, FilterConfig config);
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
@@ -184,6 +179,10 @@ class Modulator {
     }
     
     feature_mode_ = feature_mode; 
+  }
+
+  inline void set_alt_feature_mode(bool alt_feature_mode) {
+    alt_feature_mode_ = alt_feature_mode;
   }
 
  private:
@@ -372,6 +371,7 @@ class Modulator {
   
   bool bypass_;
   bool reset_reverb;
+  bool alt_feature_mode_;
   FeatureMode feature_mode_;
 
   Parameters parameters_;
