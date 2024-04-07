@@ -94,6 +94,8 @@ void Ui::Init(Settings* settings, CvScaler* cv_scaler, Modulator* modulator) {
   modulator_ = modulator;
   
   modulator_->set_feature_mode(static_cast<FeatureMode>(settings_->state().feature_mode));
+  modulator_->set_alt_feature_mode(settings_->state().alt_feature_mode);
+  alt_feature_mode_ = modulator_->alt_feature_mode();
   feature_mode_ = modulator_->feature_mode();
   carrier_shape_ = settings_->state().carrier_shape;
   UpdateSettings();
@@ -108,6 +110,7 @@ void Ui::UpdateSettings() {
   modulator_->set_feature_mode(static_cast<FeatureMode>(feature_mode_));
   modulator_->set_alt_feature_mode(alt_feature_mode_);
   settings_->mutable_state()->feature_mode = feature_mode_;
+  settings_->mutable_state()->alt_feature_mode = alt_feature_mode_;
   modulator_->mutable_parameters()->carrier_shape = carrier_shape_;
   settings_->mutable_state()->carrier_shape = carrier_shape_;
 }
@@ -209,6 +212,7 @@ void Ui::Poll() {
           leds_.set_main((feature_mode_palette_[feature_mode_][0] * tri) >> 8,
             (feature_mode_palette_[feature_mode_][1] * tri) >> 8,
             (feature_mode_palette_[feature_mode_][2] * tri) >> 8);
+          leds_.set_osc(!alt_feature_mode_, alt_feature_mode_);
         }
       }
       break;
