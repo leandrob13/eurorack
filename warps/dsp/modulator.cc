@@ -457,9 +457,9 @@ void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t 
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
-  //float* oversampled_carrier = src_buffer_[0];
-  //float* oversampled_modulator = src_buffer_[1];
-  //float* oversampled_output = src_buffer_[0];
+  float* oversampled_carrier = src_buffer_[0];
+  float* oversampled_modulator = src_buffer_[1];
+  float* oversampled_output = src_buffer_[0];
 
   ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
 
@@ -468,20 +468,20 @@ void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t 
     RenderCarrier(input, carrier, aux_output, size);
   }
 
-  //src_up2_[0].Process(carrier, oversampled_carrier, size);
-  //src_up2_[1].Process(modulator, oversampled_modulator, size);
+  src_up2_[0].Process(carrier, oversampled_carrier, size);
+  src_up2_[1].Process(modulator, oversampled_modulator, size);
 
   ProcessXmod<ALGORITHM_CHEBYSCHEV>(
-        previous_parameters_.modulation_algorithm,
-        parameters_.modulation_algorithm,
-        previous_parameters_.skewed_modulation_parameter(),
-        parameters_.skewed_modulation_parameter(),
-        modulator, //oversampled_modulator,
-        carrier, //oversampled_carrier,
-        main_output, //oversampled_output,
-        size); //size * kLessOversampling);
+    previous_parameters_.modulation_algorithm,
+    parameters_.modulation_algorithm,
+    previous_parameters_.skewed_modulation_parameter(),
+    parameters_.skewed_modulation_parameter(),
+    oversampled_modulator, // or modulator
+    oversampled_carrier, // or carrier
+    oversampled_output, // or main_output
+    size * kLessOversampling); // or size
 
-  //src_down2_[0].Process(oversampled_output, main_output, size * kLessOversampling);
+  src_down2_[0].Process(oversampled_output, main_output, size * kLessOversampling);
 
   Convert(output, main_output, aux_output, 16384.0f, size);
   previous_parameters_ = parameters_;
@@ -882,6 +882,8 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     break;
 
   case FEATURE_MODE_CHEBYSCHEV: 
+    parameters_.modulation_parameter = 0.7f + 0.3f * parameters_.modulation_parameter;
+    parameters_.modulation_algorithm = 0.005f + 0.695f * parameters_.modulation_algorithm;
     ProcessChebyschev(input, output, size);
     break;
 
@@ -929,8 +931,8 @@ inline float Modulator::Mod<ALGORITHM_CHEBYSCHEV>(
 
   static float envelope_;
 
-
-  SLOPE(envelope_, fabs(x), att, rel);
+  float error = fabs(x) - envelope_;
+  envelope_ += (error > 0.0f ? att : rel) * error;
   float amp = 0.9f / envelope_;
 
   const float degree = 6.0f;
@@ -1060,18 +1062,24 @@ inline float Modulator::Xmod<ALGORITHM_CHEBYSCHEV>(
 
   float x = x_1 + x_2;
 
-  const float degree = 16.0f;
+  const float att = 1.0f;
+  const float rel = 0.000001f;
 
-  x *= p_2 * 2.0f;
+  static float envelope_;
 
-  if (x < -1.0f) x = -1.0f;
-  else if (x > 1.0f) x = 1.0f;
+  float error = fabs(x) - envelope_;
+  envelope_ += (error > 0.0f ? att : rel) * error;
+
+  const float degree = 14.0f;
+
+  x /= envelope_;
+  x *= p_2;
 
   float n = p_1 * degree;
 
   float tn1 = x;
   float tn = 2.0f * x * x - 1;
-  while (n > 1.0f) {
+  while (n > 1.0) {
     float temp = tn;
     tn = 2.0f * x * tn - tn1;
     tn1 = temp;
@@ -1080,7 +1088,8 @@ inline float Modulator::Xmod<ALGORITHM_CHEBYSCHEV>(
 
   x = tn1 + (tn - tn1) * n;
   x /= p_2;
-  x *= 0.5f;
+
+  x *= envelope_;
 
   return x;
 }

@@ -173,6 +173,8 @@ class Modulator {
   inline void set_bypass(bool bypass) { bypass_ = bypass; }
 
   inline FeatureMode feature_mode() const { return feature_mode_; }
+  inline bool alt_feature_mode() const { return alt_feature_mode_; }
+  
   inline void set_feature_mode(FeatureMode feature_mode) { 
     if (feature_mode_ == FEATURE_MODE_REVERB && feature_mode != FEATURE_MODE_REVERB) {
       reset_reverb = true;
@@ -230,7 +232,7 @@ class Modulator {
         size);
 
       for (size_t i = 0; i < size; ++i) {
-        carrier[i] = aux_output[i] * (amp_control ? level : 0.75f);
+        carrier[i] = aux_output[i] * (amp_control ? level : 0.5f);
       }
   }
 
