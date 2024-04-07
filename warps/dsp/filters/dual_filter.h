@@ -7,9 +7,6 @@
 #include "stmlib/dsp/filter.h"
 #include "stmlib/dsp/units.h"
 
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#define PI_F 3.1415927410125732421875f
-
 using namespace stmlib;
 
 namespace warps
@@ -109,8 +106,9 @@ class DualFilter
     void SetFreqsRes(float fl, float rl, float fr, float rr) {
         float l_cutoff = 2.2f * f0 * SemitonesToRatio(120.0f * fl);
         float r_cutoff = 2.2f * f0 * SemitonesToRatio(120.0f * fr);
-        filterL_.set_f_q<FREQUENCY_DIRTY>(l_cutoff, 5.0f * rl + 0.25f);
-        filterR_.set_f_q<FREQUENCY_DIRTY>(r_cutoff, 5.0f * rr + 0.25f);
+        
+        filterL_.set_f_q<FREQUENCY_DIRTY>(l_cutoff, resonance(rl) + 0.125f);
+        filterR_.set_f_q<FREQUENCY_DIRTY>(r_cutoff, resonance(rr) + 0.125f);
     }
 
     void SetLayout(FilterLayout value) {
@@ -133,6 +131,19 @@ class DualFilter
     FilterLayout layout_;
     FilterConfig config_;
     float f0;
+
+    float resonance(float r) {
+        //float resonance = 1.333f * (r - 0.25f);
+        float resonance_sqr = exp_amp(r);//r * r * r;
+        return resonance_sqr * 48.0f;
+    }
+
+    float exp_amp(float x) {
+      // Clamp x to the range [0, 1]
+      x = fminf(fmaxf(x, 0.0f), 1.0f);
+      // Compute the amplification using an exponential function
+      return (expf(3.0f * (x - 0.75f)) / 2) - 0.05f;
+  }
 };
 
 } // namespace warps
