@@ -44,6 +44,8 @@ RESOURCES      = streams/resources
 
 include stmlib/makefile.inc
 
+TOOLCHAIN_PATH ?= ${MI_TOOLCHAIN_PATH}
+
 # Rule for building the firmware update file
 wav:  $(TARGET_BIN)
 	python stm_audio_bootloader/qpsk/encoder.py \

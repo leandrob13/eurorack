@@ -411,12 +411,19 @@ void Ui::OnSwitchReleased(const Event& e) {
       case SWITCH_MODE_1:
       case SWITCH_MODE_2:
         {
-          processor_[e.control_id].set_alternate(
-              !processor_[e.control_id].alternate());
-          if (processor_[e.control_id].function() >
-              PROCESSOR_FUNCTION_COMPRESSOR) {
-            processor_[e.control_id].set_function(PROCESSOR_FUNCTION_ENVELOPE);
+          processor_[e.control_id].set_alternate(!processor_[e.control_id].alternate());
+
+          if (processor_[e.control_id].function() == PROCESSOR_FUNCTION_FILTER_CONTROLLER) {
+            processor_[e.control_id].set_function(PROCESSOR_FUNCTION_LORENZ_GENERATOR);
+          } else if (processor_[e.control_id].function() == PROCESSOR_FUNCTION_LORENZ_GENERATOR) {
+            processor_[e.control_id].set_function(PROCESSOR_FUNCTION_FILTER_CONTROLLER);
           }
+          
+          
+          /*if (processor_[e.control_id].function() > PROCESSOR_FUNCTION_COMPRESSOR) {
+            processor_[e.control_id].set_function(PROCESSOR_FUNCTION_ENVELOPE);
+          }*/
+
           display_mode_[e.control_id] = DISPLAY_MODE_FUNCTION;
           int32_t other = 1 - e.control_id;
           if (display_mode_[other] == DISPLAY_MODE_MONITOR_FUNCTION) {
@@ -434,10 +441,14 @@ void Ui::OnSwitchReleased(const Event& e) {
         {
           if (display_mode_[e.control_id] == DISPLAY_MODE_FUNCTION) {
             ProcessorFunction index = processor_[e.control_id].function();
-            index = static_cast<ProcessorFunction>(index + 1);
-            ProcessorFunction limit = processor_[e.control_id].alternate()
+            bool is_alternate = processor_[e.control_id].alternate();
+            int counter = (!is_alternate && index == PROCESSOR_FUNCTION_COMPRESSOR) ? 2 : 1;
+            
+            index = static_cast<ProcessorFunction>(index + counter);
+
+            ProcessorFunction limit =  is_alternate
                 ? PROCESSOR_FUNCTION_FILTER_CONTROLLER
-                : PROCESSOR_FUNCTION_COMPRESSOR;
+                : PROCESSOR_FUNCTION_LORENZ_GENERATOR;
             if (index > limit) {
               index = static_cast<ProcessorFunction>(0);
             }

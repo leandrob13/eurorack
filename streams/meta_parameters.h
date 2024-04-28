@@ -51,12 +51,12 @@ inline void ComputeAmountOffset(
 inline void ComputeAttackDecay(int32_t shape, uint16_t* a, uint16_t* d) {
   if (shape < 32768) {
     *a = 0;
-    *d = 13 * (shape >> 3) + 12288;
+    *d = shape; //13 * (shape >> 3) + 12288;
   } else if (shape < 49152) {
     *a = (shape - 32768) << 1;
     *d = 65535 - ((shape - 32768) >> 1) * 3;
   } else {
-    *a = 32768 - ((shape - 49152) >> 2) * 5;
+    *a = (shape - 32768) << 1; //32768 - ((shape - 49152) >> 2) * 5;
     *d = 65535 - ((shape - 32768) >> 1) * 3;
   }
 }
