@@ -37,7 +37,8 @@
 #include "tides2/io_buffer.h"
 #include "tides2/poly_slope_generator.h"
 #include "tides2/ramp/ramp_extractor.h"
-#include "tides2/lfo/poly_lfo.h"
+#include "tides2/modulators/poly_lfo.h"
+#include "tides2/modulators/attractors.h"
 #include "tides2/resources.h"
 #include "tides2/settings.h"
 #include "tides2/ui.h"
@@ -61,6 +62,7 @@ IOBuffer io_buffer;
 PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
 PolyLfo poly_lfo;
+Attractors attractors;
 Settings settings;
 Ui ui;
 
@@ -256,33 +258,65 @@ void Process(IOBuffer::Block* block, size_t size) {
         }
       }
   } else {
-      poly_lfo.set_coupling(block->lfo_parameters.coupling_);
-      poly_lfo.set_shape(block->lfo_parameters.shape_);
-      poly_lfo.set_shape_spread(block->lfo_parameters.shape_spread_);
-      poly_lfo.set_spread(block->lfo_parameters.spread_);
+      switch (output_mode) {
+        case OUTPUT_MODE_GATES:
+          {
+            poly_lfo.set_coupling(block->lfo_parameters.coupling_);
+            poly_lfo.set_shape(block->lfo_parameters.shape_);
+            poly_lfo.set_shape_spread(block->lfo_parameters.shape_spread_);
+            poly_lfo.set_spread(block->lfo_parameters.spread_);
 
-      //float n_f = normalize_frequency(frequency, state.range);
-      poly_lfo.Render(static_cast<int32_t>(offset + (frequency * multiplier) ));
+            poly_lfo.Render(static_cast<int32_t>(offset + (frequency * multiplier) ));
 
-      if (half_speed) {
-        for (size_t i = 0; i < size; ++i) {
-          for (size_t j = 0; j < kNumCvOutputs; ++j) {
-            block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
+            if (half_speed) {
+              for (size_t i = 0; i < size; ++i) {
+                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                  block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                      settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
+                }
+              }
+            } else {
+              for (size_t i = 0; i < size; ++i) {
+                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                  block->output[j][i] = settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
+                }
+              }
+            }
           }
-        }
-      } else {
-        for (size_t i = 0; i < size; ++i) {
-          for (size_t j = 0; j < kNumCvOutputs; ++j) {
-            settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
+          break;
+        case OUTPUT_MODE_SLOPE_PHASE:
+        case OUTPUT_MODE_FREQUENCY:
+        case OUTPUT_MODE_AMPLITUDE:
+          {
+            attractors.set_gain(block->parameters.shape);
+            attractors.set_rossler(block->parameters.slope);
+            attractors.set_thomas(block->parameters.smoothness);
+            attractors.set_chua(block->parameters.shift);
+            attractors.set_speed(state.range);
+
+            attractors.Process(transposition);
+
+            if (half_speed) {
+              for (size_t i = 0; i < size; ++i) {
+                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                  block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                      settings.dac_code(j, attractors.channels(j));
+                }
+              }
+            } else {
+              for (size_t i = 0; i < size; ++i) {
+                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                  block->output[j][i] = settings.dac_code(j, attractors.channels(j));
+                }
+              }
+            }
           }
-        }
+          break;
+        default:
+          break;
       }
+      
   }
-  
-  
-  
-  
 }
 
 void Init() {
@@ -314,6 +348,7 @@ void Init() {
   ratio_index_quantizer.Init(20, 0.05f, false);
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
   poly_lfo.Init();
+  attractors.Init();
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 
   sys.StartTimers();

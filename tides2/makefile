@@ -39,7 +39,7 @@ UPLOAD_COMMAND  = upload_combo_jtag_erase_first
 TARGET         = tides2
 PACKAGES       = tides2 \
 		tides2/ramp \
-		tides2/lfo \
+		tides2/modulators \
 		tides2/drivers \
 		stmlib/dsp \
 		stmlib/utils \

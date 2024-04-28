@@ -26,7 +26,7 @@
 //
 // Poly LFO.
 
-#include "tides2/lfo/poly_lfo.h"
+#include "tides2/modulators/poly_lfo.h"
 
 #include <cstdio>
 #include <algorithm>
@@ -94,4 +94,4 @@ void PolyLfo::Render(int32_t frequency) {
   }
 }
 
-}  // namespace frames
+}  // namespace tides
