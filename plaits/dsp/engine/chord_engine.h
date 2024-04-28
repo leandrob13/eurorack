@@ -65,6 +65,7 @@ class ChordEngine : public Engine {
   
   float morph_lp_;
   float timbre_lp_;
+  float chord_;
   
   DISALLOW_COPY_AND_ASSIGN(ChordEngine);
 };

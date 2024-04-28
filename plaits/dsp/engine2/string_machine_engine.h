@@ -54,6 +54,7 @@ class StringMachineEngine : public Engine {
   void ComputeRegistration(float registration, float* amplitudes);
   
   ChordBank chords_;
+  float chord_;
   
   Ensemble ensemble_;
   StringSynthOscillator divide_down_voice_[kChordNumNotes];

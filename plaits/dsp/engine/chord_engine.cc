@@ -110,7 +110,15 @@ void ChordEngine::Render(
   ONE_POLE(morph_lp_, parameters.morph, 0.1f);
   ONE_POLE(timbre_lp_, parameters.timbre, 0.1f);
 
-  chords_.set_chord(parameters.harmonics);
+  //int16_t fchord = chords_.chord_range(parameters.chord);
+  float chord = parameters.chord;
+  float hysteresis = chord - chord_ > 0.0f ? -0.025f : +0.025f;
+  chord_ = chord + hysteresis + 0.25f;
+  int16_t fchord = static_cast<int16_t>(floor(chord_));
+
+  float chord_transpose = static_cast<int16_t>(fchord / 12) * 12.0f;
+  chords_.set_genre(parameters.genre);
+  chords_.set_chord(static_cast<float>(fchord % 12) / 11.0f);
 
   float harmonics[kChordNumHarmonics * 2 + 2];
   float note_amplitudes[kChordNumVoices];
@@ -128,7 +136,7 @@ void ChordEngine::Render(
   fill(&out[0], &out[size], 0.0f);
   fill(&aux[0], &aux[size], 0.0f);
   
-  const float f0 = NoteToFrequency(parameters.note) * 0.998f;
+  const float f0 = NoteToFrequency(parameters.tonic + chord_transpose) * 0.998f;
   const float waveform = max((morph_lp_ - 0.535f) * 2.15f, 0.0f);
   
   for (int note = 0; note < kChordNumVoices; ++note) {

@@ -34,6 +34,7 @@
 #include "stmlib/utils/buffer_allocator.h"
 
 #include <algorithm>
+#include <math.h>
 
 namespace plaits {
 
@@ -45,7 +46,7 @@ const int kChordNumVoices = kChordNumNotes + 1;
 #ifdef JON_CHORDS
 const int kChordNumChords = 17;
 #else
-const int kChordNumChords = 11;
+const int kChordNumChords = 12;
 #endif  // JON_CHORDS
 
 class ChordBank {
@@ -71,8 +72,22 @@ class ChordBank {
   }
   
   inline void set_chord(float parameter) {
-    chord_index_quantizer_.Process(parameter * 1.02f);
+    chord_index_quantizer_.Process(parameter);
   }
+
+  inline void set_genre(float new_genre) {
+    int genre = genre_quantizer_.Process(new_genre);
+    if (genre != genre_) {
+      genre_ = genre;
+      Reset();
+    }
+  }
+
+  /*inline int16_t chord_range(float chord) {
+    float hysteresis = chord - chord_ > 0.0f ? -0.025f : +0.025f;
+    chord_ = chord + hysteresis + 0.25f;
+    return static_cast<int16_t>(floor(chord_));
+  }*/
   
   inline int chord_index() const {
     return chord_index_quantizer_.quantized_value();
@@ -96,12 +111,15 @@ class ChordBank {
 
  private:
   stmlib::HysteresisQuantizer2 chord_index_quantizer_;
+  stmlib::HysteresisQuantizer2 genre_quantizer_;
   
   float* ratios_;
   float* sorted_ratios_;
   int* note_count_;
+  int16_t genre_;
+  float chord_;
   
-  static const float chords_[kChordNumChords][kChordNumNotes];
+  //static const float chords_[kChordNumChords][kChordNumNotes];
   
   DISALLOW_COPY_AND_ASSIGN(ChordBank);
 };

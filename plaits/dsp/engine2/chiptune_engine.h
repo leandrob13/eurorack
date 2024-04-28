@@ -64,6 +64,7 @@ class ChiptuneEngine : public Engine {
   NESTriangleOscillator<> bass_;
   
   ChordBank chords_;
+  float chord_;
   Arpeggiator arpeggiator_;
   stmlib::HysteresisQuantizer2 arpeggiator_pattern_selector_;
   

@@ -166,6 +166,9 @@ void Voice::Render(
   // Actual synthesis parameters.
   
   p.harmonics = patch.harmonics + modulations.harmonics;
+  p.genre = patch.harmonics;
+  p.chord = note;
+  p.tonic = patch.note;
   CONSTRAIN(p.harmonics, 0.0f, 1.0f);
 
   float internal_envelope_amplitude = 1.0f;

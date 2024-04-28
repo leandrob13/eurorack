@@ -56,6 +56,10 @@ struct EngineParameters {
   float morph;
   float harmonics;
   float accent;
+
+  float genre;
+  float chord;
+  float tonic;
 };
 
 struct PostProcessingSettings {

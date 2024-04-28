@@ -62,7 +62,17 @@ void ChiptuneEngine::Render(
     float* aux,
     size_t size,
     bool* already_enveloped) {
-  const float f0 = NoteToFrequency(parameters.note);
+
+  //int16_t fchord = chords_.chord_range(parameters.chord);
+  float chord = parameters.chord;
+  float hysteresis = chord - chord_ > 0.0f ? -0.025f : +0.025f;
+  chord_ = chord + hysteresis + 0.25f;
+  int16_t fchord = static_cast<int16_t>(floor(chord_));
+
+  float chord_transpose = static_cast<int16_t>(fchord / 12) * 12.0f;
+  chords_.set_genre(parameters.genre);
+  
+  const float f0 = NoteToFrequency(parameters.tonic + chord_transpose);
   const float shape = parameters.morph * 0.995f;
   const bool clocked = !(parameters.trigger & TRIGGER_UNPATCHED);
   float root_transposition = 1.0f;
@@ -71,7 +81,7 @@ void ChiptuneEngine::Render(
   
   if (clocked) {
     if (parameters.trigger & TRIGGER_RISING_EDGE) {
-      chords_.set_chord(parameters.harmonics);
+      chords_.set_chord(static_cast<float>(fchord % 12) / 11.0f);
       chords_.Sort();
 
       int pattern = arpeggiator_pattern_selector_.Process(parameters.timbre);
@@ -89,7 +99,7 @@ void ChiptuneEngine::Render(
     float ratios[kChordNumVoices];
     float amplitudes[kChordNumVoices];
 
-    chords_.set_chord(parameters.harmonics);
+    chords_.set_chord(static_cast<float>(fchord % 12) / 11.0f);
     chords_.ComputeChordInversion(parameters.timbre, ratios, amplitudes);
     for (int j = 1; j < kChordNumVoices; j += 2) {
       amplitudes[j] = -amplitudes[j];
