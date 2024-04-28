@@ -42,6 +42,10 @@ namespace tides {
 
 typedef uint8_t ResourceId;
 
+extern const uint32_t lut_increments[];
+
+extern const uint8_t wt_lfo_waveforms[];
+
 extern const float* lookup_table_table[];
 
 extern const int16_t* lookup_table_i16_table[];

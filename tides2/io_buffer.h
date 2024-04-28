@@ -54,10 +54,19 @@ struct Parameters {
   float shift;
 };
 
+struct LfoParameters {
+  uint16_t shape_;
+  uint16_t shape_spread_;
+  uint16_t spread_;
+  uint16_t coupling_;
+};
+
+
 class IOBuffer {
  public:
   struct Block {
     Parameters parameters;
+    LfoParameters lfo_parameters;
 
     bool input_patched[kNumInputs + 1];
 

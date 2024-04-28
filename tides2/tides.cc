@@ -37,6 +37,7 @@
 #include "tides2/io_buffer.h"
 #include "tides2/poly_slope_generator.h"
 #include "tides2/ramp/ramp_extractor.h"
+#include "tides2/lfo/poly_lfo.h"
 #include "tides2/resources.h"
 #include "tides2/settings.h"
 #include "tides2/ui.h"
@@ -59,6 +60,7 @@ HysteresisQuantizer2 ratio_index_quantizer;
 IOBuffer io_buffer;
 PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
+PolyLfo poly_lfo;
 Settings settings;
 Ui ui;
 
@@ -103,6 +105,13 @@ static const float kRoot[3] = {
   0.125f / kSampleRate,
   2.0f / kSampleRate,
   130.81f / kSampleRate
+};
+
+static const float kOffset[3] = {
+  //8192.0f,
+  16384.0f,
+  32768.0f,
+  49152.0f
 };
 
 static Ratio kRatios[20] = {
@@ -178,6 +187,8 @@ void Process(IOBuffer::Block* block, size_t size) {
   }
 
   float frequency;
+  float offset;
+  float multiplier;
   if (block->input_patched[1]) {
     if (must_reset_ramp_extractor) {
       ramp_extractor.Reset();
@@ -192,9 +203,18 @@ void Process(IOBuffer::Block* block, size_t size) {
         block->input[1],
         ramp,
         size);
+
+    if (ramp_mode == RAMP_MODE_MOD) {
+      offset = 8192.0f + 2048.0f; //0.0f;
+      multiplier = kOffset[1] * kOffset[0];//8192.0f;
+    }
+       
     must_reset_ramp_extractor = false;
   } else {
-    frequency = kRoot[state.range] * stmlib::SemitonesToRatio(transposition);
+    offset = kOffset[state.range];
+    multiplier = 1024.0f;
+    float root = (ramp_mode != RAMP_MODE_MOD) ? kRoot[state.range] : 1;
+    frequency = root * stmlib::SemitonesToRatio(transposition);
     if (half_speed) {
       frequency *= 2.0f;
     }
@@ -206,7 +226,8 @@ void Process(IOBuffer::Block* block, size_t size) {
     previous_output_mode = output_mode;
   }
 
-  poly_slope_generator.Render(
+  if (ramp_mode != RAMP_MODE_MOD) {
+    poly_slope_generator.Render(
       ramp_mode,
       output_mode,
       range,
@@ -219,21 +240,49 @@ void Process(IOBuffer::Block* block, size_t size) {
       !block->input_patched[0] && block->input_patched[1] ? ramp : NULL,
       out,
       size);
-  
-  if (half_speed) {
-    for (size_t i = 0; i < size; ++i) {
-      for (size_t j = 0; j < kNumCvOutputs; ++j) {
-        block->output[j][2 * i] = block->output[j][2 * i + 1] =
-            settings.dac_code(j, out[i].channel[j]);
+
+      if (half_speed) {
+        for (size_t i = 0; i < size; ++i) {
+          for (size_t j = 0; j < kNumCvOutputs; ++j) {
+            block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                settings.dac_code(j, out[i].channel[j]);
+          }
+        }
+      } else {
+        for (size_t i = 0; i < size; ++i) {
+          for (size_t j = 0; j < kNumCvOutputs; ++j) {
+            block->output[j][i] = settings.dac_code(j, out[i].channel[j]);
+          }
+        }
       }
-    }
   } else {
-    for (size_t i = 0; i < size; ++i) {
-      for (size_t j = 0; j < kNumCvOutputs; ++j) {
-        block->output[j][i] = settings.dac_code(j, out[i].channel[j]);
+      poly_lfo.set_coupling(block->lfo_parameters.coupling_);
+      poly_lfo.set_shape(block->lfo_parameters.shape_);
+      poly_lfo.set_shape_spread(block->lfo_parameters.shape_spread_);
+      poly_lfo.set_spread(block->lfo_parameters.spread_);
+
+      //float n_f = normalize_frequency(frequency, state.range);
+      poly_lfo.Render(static_cast<int32_t>(offset + (frequency * multiplier) ));
+
+      if (half_speed) {
+        for (size_t i = 0; i < size; ++i) {
+          for (size_t j = 0; j < kNumCvOutputs; ++j) {
+            block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
+          }
+        }
+      } else {
+        for (size_t i = 0; i < size; ++i) {
+          for (size_t j = 0; j < kNumCvOutputs; ++j) {
+            settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
+          }
+        }
       }
-    }
   }
+  
+  
+  
+  
 }
 
 void Init() {
@@ -264,6 +313,7 @@ void Init() {
   poly_slope_generator.Init();
   ratio_index_quantizer.Init(20, 0.05f, false);
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
+  poly_lfo.Init();
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 
   sys.StartTimers();
