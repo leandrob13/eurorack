@@ -42,7 +42,7 @@ void ChordStringSynth::Init(uint16_t* reverb_buffer) {
   for (int32_t i = 0; i < stringSynthVoices; ++i) {
     synth.voice[i].Init();
   }
-  
+  previous_strum = false;
   synth.tonic = 0.0f;
   synth.envelope.Init();
   synth.arp.Init();
@@ -83,7 +83,7 @@ void ChordStringSynth::Process(
   float fnote = note_filter_.note();
   float hysteresis = fnote - fnote_ > 0.0f ? -0.05f : +0.05f;
   fnote_ = fnote + hysteresis + 0.25f;
-  synth.chord = static_cast<int16_t>(ceil(fnote_));
+  synth.chord = static_cast<int16_t>(floor(fnote_));
   synth.chord_transpose = static_cast<int16_t>(synth.chord / 12) * 12.0f;
   synth.genre = performance_state.genre;
   synth.vca_level = performance_state.vca_level;
@@ -94,22 +94,26 @@ void ChordStringSynth::Process(
   synth.active_envelope = performance_state.envelope <= 0.98f;
   bool arpeggiated = performance_state.arp != 0;
 
+  float envelope = performance_state.envelope;
+
   if (!arpeggiated) synth.arp.Reset();
-  if (performance_state.strum) {
-    envelope_flag = ENVELOPE_FLAG_RISING_EDGE;
-    if (arpeggiated) {
+  if (performance_state.gate) {
+    envelope_flag = previous_strum ? envelope_flag : ENVELOPE_FLAG_RISING_EDGE;
+    
+    if (arpeggiated && performance_state.strum) {
       int range = performance_state.arp < 0 ? 1 : 2;
       int mode = performance_state.arp < 0 ? -1 * performance_state.arp : performance_state.arp;
       synth.arp.set_mode(ArpeggiatorMode(mode - 1));
       synth.arp.set_range(range);
       synth.arp.Clock(chord_size);
     }
-  }
-  envelope_flag |= ENVELOPE_FLAG_GATE;
+    envelope_flag |= ENVELOPE_FLAG_GATE;  
+  } 
+  previous_strum = performance_state.gate;
   bool clocked = arpeggiated && !performance_state.internal_strum;
 
   // Process envelopes.
-  float envelope_value = ProcessEnvelopes(performance_state.envelope, envelope_flag);
+  float envelope_value = ProcessEnvelopes(envelope, envelope_flag);
   
   copy(&in[0], &in[size], &aux[0]);
   copy(&in[0], &in[size], &out[0]);

@@ -206,6 +206,7 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   performance_state->internal_strum = internal_strum;
   performance_state->internal_note = internal_note;
   performance_state->strum = trigger_input_.rising_edge();
+  performance_state->gate = trigger_input_.value() && !internal_strum;
   
   if (performance_state->internal_note) {
     // Remove quantization when nothing is plugged in the V/OCT input.

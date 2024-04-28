@@ -119,31 +119,30 @@ class ChordStringSynth {
   
  private:
   float ProcessEnvelopes(float shape, uint8_t flag) {
-  float decay = shape;
-  float attack = 0.0f;
-  if (shape < 0.5f) {
-    attack = 0.0f;
-  } else {
-    attack = (shape - 0.5f) * 2.0f;
-  }
-  
-  // Convert the arbitrary values to actual units.
-  float period = kSampleRate / kMaxBlockSize;
-  float attack_time = SemitonesToRatio(attack * 96.0f) * 0.005f * period;
-  // float decay_time = SemitonesToRatio(decay * 96.0f) * 0.125f * period;
-  float decay_time = SemitonesToRatio(decay * 84.0f) * 0.180f * period;
-  float attack_rate = 1.0f / attack_time;
-  float decay_rate = 1.0f / decay_time;
-  
-  float drone = shape < 0.98f ? 0.0f : (shape - 0.98f) * 55.0f;
-  if (drone >= 1.0f) drone = 1.0f;
+    float decay = shape;
+    float attack = 0.0f;
+    if (shape < 0.5f) {
+      attack = 0.0f;
+    } else {
+      attack = (shape - 0.5f) * 2.0f;
+    }
+    
+    // Convert the arbitrary values to actual units.
+    float period = kSampleRate / kMaxBlockSize;
+    float attack_time = SemitonesToRatio(attack * 96.0f) * 0.005f * period;
+    //float decay_time = SemitonesToRatio(decay * 96.0f) * 0.125f * period;
+    float decay_time = SemitonesToRatio(decay * 84.0f) * 0.180f * period;
+    float attack_rate = 1.0f / attack_time;
+    float decay_rate = 1.0f / decay_time;
+    
+    float drone = shape < 0.995f ? 0.0f : 1.0f;
 
-  synth.envelope.set_ad(attack_rate, decay_rate);
-  float value = synth.envelope.Process(flag);
-  value = value + (1.0f - value) * drone;
-  
-  return value;
-}
+    synth.envelope.set_ar(attack_rate, decay_rate);
+    float value = synth.envelope.Process(flag);
+    value = value + (1.0f - value) * drone;
+    
+    return value;
+  }
   
 void ComputeRegistration(
   float gain,
@@ -230,6 +229,7 @@ void ProcessFilter(
   float filter_out_buffer_[kMaxBlockSize];
   float fnote_;
   bool clear_fx_;
+  bool previous_strum;
   
   DISALLOW_COPY_AND_ASSIGN(ChordStringSynth);
 };

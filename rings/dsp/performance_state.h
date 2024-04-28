@@ -45,6 +45,7 @@ struct PerformanceState {
   float note;
   float fm;
   int32_t chord;
+  bool gate;
 
   int16_t genre;
   int16_t arp;
