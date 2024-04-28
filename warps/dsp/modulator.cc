@@ -452,6 +452,46 @@ void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t si
   previous_parameters_ = parameters_;
 }
 
+/*void Modulator::ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size) {
+  float* carrier = buffer_[0];
+  float* modulator = buffer_[1];
+  float* main_output = buffer_[0];
+  float* aux_output = buffer_[2];
+
+  ApplyAmplification(input, parameters_.channel_drive, aux_output, size, true);
+
+  float transpose = 25.0f * previous_parameters_.raw_algorithm;
+  float hysteresis = transpose - transpose_ > 0.0f ? -0.3f : +0.3f;
+  transpose_ = static_cast<uint32_t>(transpose + hysteresis + 0.5f);
+
+  if (parameters_.carrier_shape == 0) {
+    pitch_shifter.set_ratio(SemitonesToRatio(-12.0f + transpose));
+  } else if (parameters_.carrier_shape == 1) {
+    float t1 = floor(25.0f * previous_parameters_.raw_algorithm);
+    pitch_shifter.set_ratio(SemitonesToRatio(-12.0f + t1));
+  } else { // if (parameters_.carrier_shape == 2)
+    float octave = floor(4.0f * previous_parameters_.raw_algorithm) - 2.0f;//static_cast<float>(((transpose_ / 6) % 5) - 2);
+    pitch_shifter.set_ratio(SemitonesToRatio(12.0f * octave));
+  }
+  pitch_shifter.set_size(0.7383f);
+  //pitch_shifter.set_size(previous_parameters_.raw_modulation);
+
+  for (size_t i = 0; i < size; i++) {
+    main_output[i] = carrier[i];
+    aux_output[i] = modulator[i];
+  }
+
+  pitch_shifter.Process(main_output, aux_output, size);
+
+  for (size_t i = 0; i < size; i++) {
+    main_output[i] = (main_output[i] + carrier[i]) * 0.5f;
+    aux_output[i] = (aux_output[i] + modulator[i]) * 0.5f;
+  }
+
+  Convert(output, main_output, aux_output, 32768.0f, size);
+  previous_parameters_ = parameters_;
+}*/
+
 void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
@@ -854,9 +894,10 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     copy(&input[0], &input[size], &output[0]);
     return;
   }
-  if (reset_reverb) {
+  if (reset_fx) {
     reverb.Clear();
-    reset_reverb = false;
+    ensemble.Reset();
+    reset_fx = false;
   }
 
   switch (feature_mode_) {
@@ -875,6 +916,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
 
   case FEATURE_MODE_FREQUENCY_SHIFTER:
     ProcessFreqShifter(input, output, size);
+    //ProcessPitchShifter(input, output, size);
     break;
 
   case FEATURE_MODE_BITCRUSHER:

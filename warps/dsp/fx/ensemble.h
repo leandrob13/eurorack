@@ -36,9 +36,12 @@
 
 namespace warps {
 
+//const size_t ENGINE_SIZE = 32768;
+//const int16_t RESERVE_SIZE = (ENGINE_SIZE / 2) - 1;
+
 class Ensemble {
  public:
-  typedef FxEngine<2048, FORMAT_16_BIT> E;
+  typedef FxEngine<ENGINE_SIZE, FORMAT_16_BIT> E;
   
   Ensemble() { }
   ~Ensemble() { }
@@ -54,7 +57,7 @@ class Ensemble {
   }
   
   void Process(float* left, float* right, size_t size) {
-    typedef E::Reserve<511, E::Reserve<511> > Memory;
+    typedef E::Reserve<RESERVE_SIZE, E::Reserve<RESERVE_SIZE> > Memory;
     E::DelayLine<Memory, 0> line_l;
     E::DelayLine<Memory, 1> line_r;
     E::Context c;

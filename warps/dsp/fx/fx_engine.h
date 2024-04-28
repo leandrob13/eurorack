@@ -38,6 +38,9 @@
 
 namespace warps {
 
+const size_t ENGINE_SIZE = 32768;
+const int16_t RESERVE_SIZE = (ENGINE_SIZE / 2) - 1;
+
 #define TAIL , -1
 
 enum Format {
