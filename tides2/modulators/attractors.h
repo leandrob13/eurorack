@@ -15,6 +15,8 @@ using namespace stmlib;
 
 const float f_scale = 2.0439497f / 62500.0f;
 
+const float max_f = 0.02f;
+
 enum Speed {
   SLOW,
   MID,
@@ -73,9 +75,122 @@ class Attractors {
     channels_[3] = ProcessChuaAttractor(frequency);
   }
 
-  float ProcessThomasSymmetricAttractor(float f) {
+  float ProcessLorenzAttractor(float f) {
 
-    float frequency = SemitonesToRatio(f) * f_scale;
+    float frequency = 1.3f * f;
+
+    switch (speed_) {
+        case SLOW:
+        frequency /= (8.0f * 8.0f);
+        break;
+        case FAST:
+        break;
+        default:
+        frequency /= 8.0f;
+        break;
+    }
+    CONSTRAIN(frequency, 0.0f, max_f);
+
+    const float sigma = 10.0f;
+    const float rho = 28.0f;
+    const float beta = 8.0f / 3.0f;
+
+    float x = lx_;
+    float y = ly_;
+    float z = lz_;
+
+    x += (frequency * ((sigma * (ly_ - lx_))));
+    y += (frequency * ((lx_ * (rho - lz_)) - ly_));
+    z += (frequency * ((lx_ * ly_) - (beta * lz_)));
+
+    lx_ = x;
+    ly_ = y;
+    lz_ = z;
+
+    return ((1.5f * x) / 4.0f) * gain_;
+  }
+
+  float ProcessRosslerAttractor(float f) {
+
+    float frequency = 1.3f * f;
+
+    switch (speed_) {
+        case SLOW:
+        frequency /= 8.0f;
+        break;
+        case FAST:
+        frequency *= 8.0f;
+        break;
+        default:
+        break;
+    }
+    CONSTRAIN(frequency, 0.0f, max_f);
+
+    const float max_a = 0.35f;
+    const float min_a = 0.2f;
+    const float a = ((max_a - min_a) * rossler_ + min_a);
+    const float b = 0.2;
+    const float c = 5.7;
+
+    float x = rx_;
+    float y = ry_;
+    float z = rz_;
+
+    x += (-ry_ - rz_) * frequency;
+    y += (rx_ + a * ry_) * frequency;
+    z += (b + rz_ * (rx_ - c)) * frequency;
+
+    rx_ = x;
+    ry_ = y;
+    rz_ = z;
+
+    return (y / 2.0f) * gain_;
+  }
+
+  /*float ProcessHenonAttractor(float f) {
+
+    float frequency = f;
+    switch (speed_) {
+        case SLOW:
+        frequency /= 8.0f;
+        break;
+        case FAST:
+        break;
+        default:
+        frequency /= 4.0f;
+        break;
+    }
+
+    CONSTRAIN(frequency, 0.0f, 0.25f);
+    frequency *= 32.0f;
+
+    const float max_a = 1.5f;
+    const float min_a = 0.05f;
+    float a = ((max_a - min_a) * thomas_ + min_a);
+    float b = 0.3f;
+    CONSTRAIN(a, min_a, max_a);
+
+    const float amp = 0.5f;
+    float x = tx_;
+    float y = ty_;
+    float z = tz_;
+    
+    float nextX = 1 - a * x * x + y;
+    float nextY = b * x;
+
+    x += frequency * dx;
+    y += frequency * dy;
+    z += frequency * dz;
+
+    tx_ = x;
+    ty_ = y;
+    tz_ = z;
+
+    return amp * (y - 2.f) * gain_;
+  }*/
+
+  float ProcessThomasSymmetricAttractor(float frequency) {
+
     switch (speed_) {
         case SLOW:
         frequency /= 8.0f;
@@ -91,7 +206,7 @@ class Attractors {
     frequency *= 32.0f;
 
     const float max_b = 0.2f;
-    const float min_b = 0.01f;
+    const float min_b = 0.02f;
     float b = ((max_b - min_b) * thomas_ + min_b);
     CONSTRAIN(b, min_b, max_b);
 
@@ -116,10 +231,10 @@ class Attractors {
 
   float ProcessChuaAttractor(float f) {
 
-    float frequency = SemitonesToRatio(f) * 1.3f * f_scale;
+    float frequency = 1.3f * f;
     switch (speed_) {
         case SLOW:
-        frequency /= (16.0f * 16.0f);
+        frequency /= (8.0f * 8.0f);
         break;
         case FAST:
         break;
@@ -154,76 +269,6 @@ class Attractors {
     cz_ = z;
 
     return (amp * output + offset) * 10.0f * gain_;
-  }
-
-  float ProcessLorenzAttractor(float f) {
-
-    float frequency = SemitonesToRatio(f) * 1.3f * f_scale;
-
-    switch (speed_) {
-        case SLOW:
-        frequency /= (16.0f * 16.0f);
-        break;
-        case FAST:
-        break;
-        default:
-        frequency /= 16.0f;
-        break;
-    }
-    CONSTRAIN(frequency, 0.0f, 0.01f);
-
-    const float sigma = 10.0f;
-    const float rho = 28.0f;
-    const float beta = 8.0f / 3.0f;
-
-    float x = lx_;
-    float y = ly_;
-    float z = lz_;
-
-    x += (frequency * ((sigma * (ly_ - lx_))));
-    y += (frequency * ((lx_ * (rho - lz_)) - ly_));
-    z += (frequency * ((lx_ * ly_) - (beta * lz_)));
-
-    lx_ = x;
-    ly_ = y;
-    lz_ = z;
-
-    return ((1.5f * x) / 4.0f) * gain_;
-  }
-
-  float ProcessRosslerAttractor(float f) {
-
-    float frequency = SemitonesToRatio(f) * 1.3f * f_scale;
-
-    switch (speed_) {
-        case SLOW:
-        frequency /= 8.0f;
-        break;
-        case FAST:
-        frequency *= 8.0f;
-        break;
-        default:
-        break;
-    }
-    CONSTRAIN(frequency, 0.0f, 0.01f);
-
-    const float a = 0.4 * rossler_;
-    const float b = 0.2;
-    const float c = 5.7;
-
-    float x = rx_;
-    float y = ry_;
-    float z = rz_;
-
-    x += (-ry_ - rz_) * frequency;
-    y += (rx_ + a * ry_) * frequency;
-    z += (b + rz_ * (rx_ - c)) * frequency;
-
-    rx_ = x;
-    ry_ = y;
-    rz_ = z;
-
-    return (x / 2.0f) * gain_;
   }
 
   private:

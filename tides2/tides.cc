@@ -215,7 +215,7 @@ void Process(IOBuffer::Block* block, size_t size) {
   } else {
     offset = kOffset[state.range];
     multiplier = 1024.0f;
-    float root = (ramp_mode != RAMP_MODE_MOD) ? kRoot[state.range] : 1;
+    float root = (ramp_mode != RAMP_MODE_MOD || output_mode != OUTPUT_MODE_GATES) ? kRoot[state.range] : 1;
     frequency = root * stmlib::SemitonesToRatio(transposition);
     if (half_speed) {
       frequency *= 2.0f;
@@ -294,7 +294,7 @@ void Process(IOBuffer::Block* block, size_t size) {
             attractors.set_chua(block->parameters.shift);
             attractors.set_speed(state.range);
 
-            attractors.Process(transposition);
+            attractors.Process(frequency);
 
             if (half_speed) {
               for (size_t i = 0; i < size; ++i) {
