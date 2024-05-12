@@ -46,6 +46,8 @@ extern const uint32_t lut_increments[];
 
 extern const uint8_t wt_lfo_waveforms[];
 
+extern const int16_t wav_integrated_waves[];
+
 extern const float* lookup_table_table[];
 
 extern const int16_t* lookup_table_i16_table[];

@@ -39,6 +39,7 @@
 #include "tides2/ramp/ramp_extractor.h"
 #include "tides2/modulators/poly_lfo.h"
 #include "tides2/modulators/attractors.h"
+#include "tides2/modulators/wavetable_engine.h"
 #include "tides2/resources.h"
 #include "tides2/settings.h"
 #include "tides2/ui.h"
@@ -63,6 +64,7 @@ PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
 PolyLfo poly_lfo;
 Attractors attractors;
+WavetableEngine wavetable_engine;
 Settings settings;
 Ui ui;
 
@@ -284,8 +286,6 @@ void Process(IOBuffer::Block* block, size_t size) {
             }
           }
           break;
-        case OUTPUT_MODE_SLOPE_PHASE:
-        case OUTPUT_MODE_FREQUENCY:
         case OUTPUT_MODE_AMPLITUDE:
           {
             attractors.set_gain(block->parameters.shape);
@@ -312,6 +312,31 @@ void Process(IOBuffer::Block* block, size_t size) {
             }
           }
           break;
+        case OUTPUT_MODE_SLOPE_PHASE:
+        case OUTPUT_MODE_FREQUENCY:  
+          {
+            float wt_out[size];
+            float aux_out[size];
+            //wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, size);
+            wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, size);
+            if (half_speed) {
+              for (size_t i = 0; i < size; ++i) {
+                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                  block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                      settings.dac_code(j, wt_out[i] * 6.0f);
+                      //settings.dac_code(j, wavetable_engine.channel(j) / 2.0f);
+                }
+              }
+            } else {
+              for (size_t i = 0; i < size; ++i) {
+                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                  block->output[j][i] = settings.dac_code(j, wt_out[i] * 6.0f);
+                  //block->output[j][i] = settings.dac_code(j, wavetable_engine.channel(j) / 2.0f);
+                }
+              }
+            }
+          }
+          break;  
         default:
           break;
       }
@@ -349,6 +374,8 @@ void Init() {
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
   poly_lfo.Init();
   attractors.Init();
+  wavetable_engine.Init();
+  wavetable_engine.LoadUserData();
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 
   sys.StartTimers();
