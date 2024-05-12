@@ -46,11 +46,8 @@ const int kNumCustomWaves = 15;
 const size_t kTableSize = 128;
 const float kTableSizeF = float(kTableSize);
 
-int16_t buffer[1024];
 
-BufferAllocator allocator(buffer, 1024);
-
-void WavetableEngine::Init() {
+void WavetableEngine::Init(BufferAllocator* allocator) {
   phase_ = 0.0f;
 
   x_lp_ = 0.0f;
@@ -67,8 +64,9 @@ void WavetableEngine::Init() {
   previous_f0_ = a0;
 
   diff_out_.Init();
+  std::fill(&channels_[0], &channels_[8], 0.0f);
   
-  wave_map_ = allocator.Allocate<const int16_t*>(kNumWavesPerBank);
+  wave_map_ = allocator->Allocate<const int16_t*>(kNumWavesPerBank);
 }
 
 void WavetableEngine::Reset() {
@@ -118,8 +116,6 @@ inline float WavetableEngine::ReadWave(
 void WavetableEngine::Render(
     const Parameters& parameters,
     float f0,
-    float* out,
-    float* aux,
     int8_t channel,
     size_t size) {
   
@@ -151,7 +147,7 @@ void WavetableEngine::Render(
       &previous_z_, static_cast<float>(z_integral) + z_fractional, size);
 
   ParameterInterpolator f0_modulation(&previous_f0_, f0, size);
-  
+  int index = 0;
   while (size--) {
     const float f0 = f0_modulation.Next();
     
@@ -220,8 +216,9 @@ void WavetableEngine::Render(
 
       float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
       mix = diff_out_.Process(cutoff, mix) * gain;
-      *out++ = mix;
-      *aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
+      channels_[index] = mix;
+      index += 1;
+      //*aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
     }
   }
 }

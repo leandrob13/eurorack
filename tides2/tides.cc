@@ -52,6 +52,9 @@ const bool skip_factory_test = false;
 const bool test_adc_noise = false;
 const size_t kDacBlockSize = 2;
 
+int16_t buffer[1024];
+BufferAllocator alloc(buffer, 1024);
+
 // #define PROFILE_INTERRUPT
 
 CvReader cv_reader;
@@ -64,6 +67,7 @@ PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
 PolyLfo poly_lfo;
 Attractors attractors;
+//WavetableEngine wavetable_engine[4];
 WavetableEngine wavetable_engine;
 Settings settings;
 Ui ui;
@@ -315,23 +319,33 @@ void Process(IOBuffer::Block* block, size_t size) {
         case OUTPUT_MODE_SLOPE_PHASE:
         case OUTPUT_MODE_FREQUENCY:  
           {
-            float wt_out[size];
-            float aux_out[size];
+            //float wt_out[size];
+            //float aux_out[size];
             //wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, size);
-            wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, 0, size);
+            //for (size_t channel = 0; channel < kNumCvOutputs; channel++) {
+            //  wavetable_engine[channel].Render(block->parameters, frequency, channel, size);
+            //}
+            
+            //wavetable_engine[0].Render(block->parameters, frequency, 0, size);
+            //wavetable_engine[1].Render(block->parameters, frequency, 1, size);
+            //wavetable_engine[2].Render(block->parameters, frequency, 2, size);
+            //wavetable_engine[3].Render(block->parameters, frequency, 3, size);
+            wavetable_engine.Render(block->parameters, frequency, 0, size);
             if (half_speed) {
-              for (size_t i = 0; i < size; ++i) {
-                for (size_t j = 0; j < kNumCvOutputs; ++j) {
+              for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                for (size_t i = 0; i < size; ++i) {                
                   block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                      settings.dac_code(j, wt_out[i] * 6.0f);
-                      //settings.dac_code(j, wavetable_engine.channel(j) / 2.0f);
+                      //settings.dac_code(j, wt_out[i] * 6.0f);
+                      settings.dac_code(j, wavetable_engine.channel(i) * 6.0f);
+                      //settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);
                 }
               }
             } else {
-              for (size_t i = 0; i < size; ++i) {
-                for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                  block->output[j][i] = settings.dac_code(j, wt_out[i] * 6.0f);
-                  //block->output[j][i] = settings.dac_code(j, wavetable_engine.channel(j) / 2.0f);
+              for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                for (size_t i = 0; i < size; ++i) {                
+                  //block->output[j][i] = settings.dac_code(j, wt_out[i] * 6.0f);
+                  block->output[j][i] = settings.dac_code(j, wavetable_engine.channel(i) * 6.0f);
+                  //block->output[j][i] = settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);
                 }
               }
             }
@@ -374,8 +388,13 @@ void Init() {
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
   poly_lfo.Init();
   attractors.Init();
-  wavetable_engine.Init();
+  /*for (size_t i = 0; i < 4; i++) {
+    wavetable_engine[i].Init(&alloc);
+    wavetable_engine[i].LoadUserData();
+  }*/
+  wavetable_engine.Init(&alloc);
   wavetable_engine.LoadUserData();
+  
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 
   sys.StartTimers();

@@ -38,6 +38,7 @@
 #include "tides2/io_buffer.h"
 
 namespace tides {
+using namespace stmlib;
 
 const float a0 = (440.0f / 8.0f) / kSampleRate;
 
@@ -68,18 +69,16 @@ class WavetableEngine {
   WavetableEngine() { }
   ~WavetableEngine() { }
   
-  virtual void Init();
+  virtual void Init(BufferAllocator* allocator);
   virtual void Reset();
   void LoadUserData();
   virtual void Render(const Parameters& parameters,
     float f0,
-    float* out,
-    float* aux,
     int8_t channel,
     size_t size);
 
-  float channel(int index) {
-    return channels_[index];
+  float channel(int block) {
+    return channels_[block];
   }
   
  private:
@@ -100,7 +99,7 @@ class WavetableEngine {
   float previous_z_;
   float previous_f0_;
 
-  float channels_[4];
+  float channels_[8];
   //size_t size_;
   
   // Maps a (bank, X, Y) coordinate to a waveform index.
@@ -128,12 +127,6 @@ inline float InterpolateWaveHermite(
     const float b_neg = w + a;
     const float f = index_fractional;
     return (((a * f) - b_neg) * f + c) * f + x0;
-}
-
-inline float NoteToFrequency(float midi_note) {
-  midi_note -= 9.0f;
-  CONSTRAIN(midi_note, -128.0f, 127.0f);
-  return a0 * 0.25f * stmlib::SemitonesToRatio(midi_note);
 }
 
 }  // namespace plaits
