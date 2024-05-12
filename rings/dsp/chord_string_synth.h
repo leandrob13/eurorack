@@ -30,9 +30,11 @@
 #define RINGS_DSP_STRING_SYNTH_PART_H_
 
 #include "stmlib/stmlib.h"
+#include "stmlib/dsp/delay_line.h"
 #include "stmlib/dsp/filter.h"
 #include "rings/dsp/dsp.h"
 #include "rings/dsp/fx/chorus.h"
+#include "rings/dsp/fx/delay.h"
 #include "rings/dsp/fx/ensemble.h"
 #include "rings/dsp/fx/reverb.h"
 #include "rings/dsp/limiter.h"
@@ -48,12 +50,14 @@ namespace rings {
 const int32_t stringSynthVoices = 12;
 const int32_t chord_size = 4;
 const int32_t numHarmonics = 3;
+//const size_t max_delay = static_cast<size_t>(32768);
+const size_t max_delay = static_cast<size_t>(2048);
 
 enum ChordOrganFxType {
-  FILTER,
+  DELAY,
   CHORUS,
   REVERB,
-  FILTER_2,
+  DELAY_2,
   ENSEMBLE,
   REVERB_2,
   LAST
@@ -73,6 +77,9 @@ struct Synth {
   float filter_frequency; // Position pot
   float filter_amount; // Position attenueverter
   float filter_cv; // Position CV
+  float delay_time;
+  float feedback;
+  float registration_amount;
 };
 
 const int32_t kRegistrationTableSize = 11;
@@ -199,7 +206,7 @@ void ProcessFilter(
     std::fill(&out[0], &out[size], 0.0f);
     std::fill(&aux[0], &aux[size], 0.0f);
 
-    filter_.set_f_q<FREQUENCY_FAST>(total_mod, 0.25f);
+    filter_.set_f_q<FREQUENCY_FAST>(total_mod, mode == FILTER_MODE_LOW_PASS ? 0.3f : 2.0f);
     float o1;
     for (size_t i = 0; i < size; ++i) {
       o1 = filter_.Process<mode>(filter_in_buffer_[i]);
@@ -213,7 +220,7 @@ void ProcessFilter(
 }
 
   Synth synth;
-  
+  Delay delay_;
   stmlib::Svf filter_;
   Ensemble ensemble_;
   Reverb reverb_;

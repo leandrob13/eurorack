@@ -251,6 +251,29 @@ class FxEngine {
       previous_read_ = x;
       accumulator_ += x * scale;
     }
+
+    template<typename D>
+    inline void ReadHermite(D& d, float offset, float scale) {
+      STATIC_ASSERT(D::base + D::length <= size, delay_memory_full);
+      MAKE_INTEGRAL_FRACTIONAL(offset);
+
+      int32_t t = (write_ptr_ + offset_integral + D::base);
+
+      const float xm1 = DataType<format>::Decompress(buffer_[(t - 1) & MASK]);
+      const float x0 = DataType<format>::Decompress(buffer_[(t) & MASK]);
+      const float x1 = DataType<format>::Decompress(buffer_[(t + 1) & MASK]);
+      const float x2 = DataType<format>::Decompress(buffer_[(t + 2) & MASK]);
+      const float c = (x1 - xm1) * 0.5f;
+      const float v = x0 - x1;
+      const float w = c + v;
+      const float a = w + v + (x2 - x0) * 0.5f;
+      const float b_neg = w + a;
+      const float f = offset_fractional;
+
+      float x = (((a * f) - b_neg) * f + c) * f + x0;
+      previous_read_ = x;
+      accumulator_ += x * scale;
+    }
     
    private:
     float accumulator_;

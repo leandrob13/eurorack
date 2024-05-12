@@ -55,6 +55,8 @@ struct PerformanceState {
   float filter_frequency; // Position pot
   float filter_amount; // Position attenueverter
   float filter_cv; // Position CV
+  float feedback; // Position attenueverter unipolar
+  float delay_time; // Position pot un LP
 };
 
 }  // namespace rings

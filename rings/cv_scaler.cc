@@ -244,9 +244,13 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   performance_state->envelope = adc_lp_[ADC_CHANNEL_POT_DAMPING];
   performance_state->vca_level = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_DAMPING);
   performance_state->vca_cv = adc_lp_[ADC_CHANNEL_CV_DAMPING];
-  performance_state->filter_frequency = adc_lp_[ADC_CHANNEL_POT_POSITION];
-  performance_state->filter_amount = adc_lp_[ADC_CHANNEL_ATTENUVERTER_POSITION];
-  performance_state->filter_cv = adc_lp_[ADC_CHANNEL_CV_POSITION];
+
+  performance_state->filter_frequency = adc_lp_[ADC_CHANNEL_POT_BRIGHTNESS];
+  performance_state->filter_amount = adc_lp_[ADC_CHANNEL_ATTENUVERTER_BRIGHTNESS];
+  performance_state->filter_cv = adc_lp_[ADC_CHANNEL_CV_BRIGHTNESS];
+  
+  performance_state->feedback = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_POSITION);
+  performance_state->delay_time = adc_lp_[ADC_CHANNEL_POT_POSITION];
   
   adc_.Convert();
   trigger_input_.Read();

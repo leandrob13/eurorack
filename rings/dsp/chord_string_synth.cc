@@ -37,7 +37,7 @@ using namespace stmlib;
 
 void ChordStringSynth::Init(uint16_t* reverb_buffer) {
   bank_ = 1;
-  fx_type_ = FILTER;
+  fx_type_ = DELAY;
 
   for (int32_t i = 0; i < stringSynthVoices; ++i) {
     synth.voice[i].Init();
@@ -49,7 +49,7 @@ void ChordStringSynth::Init(uint16_t* reverb_buffer) {
   
   filter_.Init();
   limiter_.Init();
-  
+  delay_.Init(reverb_buffer);
   reverb_.Init(reverb_buffer);
   chorus_.Init(reverb_buffer);
   ensemble_.Init(reverb_buffer);
@@ -88,10 +88,18 @@ void ChordStringSynth::Process(
   synth.genre = performance_state.genre;
   synth.vca_level = performance_state.vca_level;
   synth.vca_cv = performance_state.vca_cv;
-  synth.filter_frequency = performance_state.filter_frequency;
-  synth.filter_cv = performance_state.filter_cv;
-  synth.filter_amount = performance_state.filter_amount;
+
+  if (bank_ == 1) {
+    synth.registration_amount = patch.brightness;
+  } else {
+    synth.filter_frequency = performance_state.filter_frequency;
+    synth.filter_cv = performance_state.filter_cv;
+    synth.filter_amount = performance_state.filter_amount;
+  }
+  
   synth.active_envelope = performance_state.envelope <= 0.98f;
+  synth.delay_time = performance_state.delay_time;
+  synth.feedback = performance_state.feedback;
   bool arpeggiated = performance_state.arp != 0;
 
   float envelope = performance_state.envelope;
@@ -123,15 +131,16 @@ void ChordStringSynth::Process(
   
   ComputeRegistration(
       envelope_value,
-      patch.brightness,
+      synth.registration_amount,
       harmonics);
   
   int16_t chord = synth.chord % 12;
   int cn = synth.arp.note();
+  int bank = 1;
   for (int32_t i = 0; i < chord_size; ++i) {
     int index = clocked ? cn : i;
-    float n = genre_chords[bank_ - 1][synth.genre][chord][index];
-    float oct_down = (bank_ == 1 && synth.genre < 3) ? 12.0f : 24.0f; 
+    float n = genre_chords[bank - 1][synth.genre][chord][index];
+    float oct_down = (bank == 1 && synth.genre < 3) ? 12.0f : 24.0f; 
     notes[i].note = n - oct_down * (1 - synth.arp.octave());
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
@@ -156,6 +165,7 @@ void ChordStringSynth::Process(
     }
 
     float frequency = SemitonesToRatio(note - 69.0f) * a3;
+    
     synth.voice[chord_note].Render(
         frequency,
         amplitudes,
@@ -163,19 +173,27 @@ void ChordStringSynth::Process(
         chord_note & 1 ? out : aux,
         size);
   }
+
+  if (bank_ == 2) {
+    ProcessFilter<FILTER_MODE_LOW_PASS>(envelope_value * 0.25f, out, aux, size);
+  } else if (bank_ == 4) {
+    ProcessFilter<FILTER_MODE_HIGH_PASS>(envelope_value * 0.25f, out, aux, size);
+  } else if (bank_ == 3) {
+    ProcessFilter<FILTER_MODE_BAND_PASS>(envelope_value * 0.25f, out, aux, size);
+  }
   
   if (clear_fx_) {
     reverb_.Clear();
+    delay_.Clear();
     clear_fx_ = false;
   }
   
   switch (fx_type_) {
-    case FILTER:
-      ProcessFilter<FILTER_MODE_LOW_PASS>(envelope_value * 0.25f, out, aux, size);
-      break;
-
-    case FILTER_2:
-      ProcessFilter<FILTER_MODE_HIGH_PASS>(envelope_value * 0.25f, out, aux, size);
+    case DELAY:
+    case DELAY_2:
+      delay_.set_delay_time(synth.delay_time);
+      delay_.set_feedback(synth.feedback);
+      delay_.Process(out, aux, size);
       break;
 
     case CHORUS:
