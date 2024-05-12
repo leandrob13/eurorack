@@ -120,6 +120,7 @@ void WavetableEngine::Render(
     float f0,
     float* out,
     float* aux,
+    int8_t channel,
     size_t size) {
   
   ONE_POLE(x_pre_lp_, parameters.shape * 2.9999f, 0.2f);
@@ -185,11 +186,16 @@ void WavetableEngine::Render(
       int z0 = z_integral;
       int z1 = z_integral + 1;
       
+      z0 += channel;
+      z1 += channel;
+
       if (z0 >= 4) {
-        z0 = 7 - z0;
+        //z0 = 7 - z0;
+        z0 -= 4;
       }
       if (z1 >= 4) {
-        z1 = 7 - z1;
+        //z1 = 7 - z1;
+        z1 -= 4;
       }
       
       float x0y0z0 = ReadWave(x0, y0, z0, p_integral, p_fractional);

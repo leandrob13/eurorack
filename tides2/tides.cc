@@ -318,7 +318,7 @@ void Process(IOBuffer::Block* block, size_t size) {
             float wt_out[size];
             float aux_out[size];
             //wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, size);
-            wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, size);
+            wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, 0, size);
             if (half_speed) {
               for (size_t i = 0; i < size; ++i) {
                 for (size_t j = 0; j < kNumCvOutputs; ++j) {

@@ -75,6 +75,7 @@ class WavetableEngine {
     float f0,
     float* out,
     float* aux,
+    int8_t channel,
     size_t size);
 
   float channel(int index) {
