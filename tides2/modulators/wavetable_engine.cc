@@ -119,8 +119,8 @@ void WavetableEngine::Render(
     int8_t channel,
     size_t size) {
   
-  ONE_POLE(x_pre_lp_, parameters.shape * 2.9999f, 0.2f);
-  ONE_POLE(y_pre_lp_, parameters.slope * 2.9999f, 0.2f);
+  ONE_POLE(x_pre_lp_, parameters.shape * 6.9999f, 0.2f);
+  ONE_POLE(y_pre_lp_, parameters.slope * 6.9999f, 0.2f);
   ONE_POLE(z_pre_lp_, parameters.shift * 2.9999f, 0.05f);
   
   const float x = x_pre_lp_;
@@ -190,7 +190,7 @@ void WavetableEngine::Render(
         z0 -= 4;
       }
       if (z1 >= 4) {
-        //z1 = 7 - z1;
+        z1 = 7 - z1;
         z1 -= 4;
       }
       
