@@ -274,18 +274,9 @@ void Process(IOBuffer::Block* block, size_t size) {
 
             poly_lfo.Render(static_cast<int32_t>(offset + (frequency * multiplier) ));
 
-            if (half_speed) {
-              for (size_t i = 0; i < size; ++i) {
-                for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                  block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                      settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
-                }
-              }
-            } else {
-              for (size_t i = 0; i < size; ++i) {
-                for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                  block->output[j][i] = settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
-                }
+            for (size_t i = 0; i < size; ++i) {
+              for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                block->output[j][i] = settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
               }
             }
           }
@@ -300,18 +291,9 @@ void Process(IOBuffer::Block* block, size_t size) {
 
             attractors.Process(frequency);
 
-            if (half_speed) {
-              for (size_t i = 0; i < size; ++i) {
-                for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                  block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                      settings.dac_code(j, attractors.channels(j));
-                }
-              }
-            } else {
-              for (size_t i = 0; i < size; ++i) {
-                for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                  block->output[j][i] = settings.dac_code(j, attractors.channels(j));
-                }
+            for (size_t i = 0; i < size; ++i) {
+              for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                block->output[j][i] = settings.dac_code(j, attractors.channels(j));
               }
             }
           }
@@ -319,34 +301,16 @@ void Process(IOBuffer::Block* block, size_t size) {
         case OUTPUT_MODE_SLOPE_PHASE:
         case OUTPUT_MODE_FREQUENCY:  
           {
-            //float wt_out[size];
-            //float aux_out[size];
-            //wavetable_engine.Render(block->parameters, frequency, wt_out, aux_out, size);
             //for (size_t channel = 0; channel < kNumCvOutputs; channel++) {
             //  wavetable_engine[channel].Render(block->parameters, frequency, channel, size);
             //}
             
-            //wavetable_engine[0].Render(block->parameters, frequency, 0, size);
-            //wavetable_engine[1].Render(block->parameters, frequency, 1, size);
-            //wavetable_engine[2].Render(block->parameters, frequency, 2, size);
-            //wavetable_engine[3].Render(block->parameters, frequency, 3, size);
-            wavetable_engine.Render(block->parameters, frequency, 0, size);
-            if (half_speed) {
-              for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                for (size_t i = 0; i < size; ++i) {                
-                  block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                      //settings.dac_code(j, wt_out[i] * 6.0f);
-                      settings.dac_code(j, wavetable_engine.channel(i) * 6.0f);
-                      //settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);
-                }
-              }
-            } else {
-              for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                for (size_t i = 0; i < size; ++i) {                
-                  //block->output[j][i] = settings.dac_code(j, wt_out[i] * 6.0f);
-                  block->output[j][i] = settings.dac_code(j, wavetable_engine.channel(i) * 6.0f);
-                  //block->output[j][i] = settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);
-                }
+            wavetable_engine.Render(block->parameters, frequency, out, size);
+            for (size_t j = 0; j < kNumCvOutputs; ++j) {
+              for (size_t i = 0; i < size; ++i) {                
+                block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                    settings.dac_code(j, out[i].channel[0] * 6.0f);
+                    //settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);
               }
             }
           }

@@ -36,6 +36,7 @@
 #include "stmlib/dsp/dsp.h"
 #include "stmlib/dsp/units.h"
 #include "tides2/io_buffer.h"
+#include "tides2/poly_slope_generator.h"
 
 namespace tides {
 using namespace stmlib;
@@ -74,12 +75,9 @@ class WavetableEngine {
   void LoadUserData();
   virtual void Render(const Parameters& parameters,
     float f0,
-    int8_t channel,
+    PolySlopeGenerator::OutputSample* out,
     size_t size);
 
-  float channel(int block) {
-    return channels_[block];
-  }
   
  private:
   float ReadWave(int x, int y, int z, int phase_i, float phase_f);
@@ -98,9 +96,6 @@ class WavetableEngine {
   float previous_y_;
   float previous_z_;
   float previous_f0_;
-
-  float channels_[8];
-  //size_t size_;
   
   // Maps a (bank, X, Y) coordinate to a waveform index.
   // This allows all waveforms to be reshuffled by the user to create new maps.

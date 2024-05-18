@@ -64,7 +64,6 @@ void WavetableEngine::Init(BufferAllocator* allocator) {
   previous_f0_ = a0;
 
   diff_out_.Init();
-  std::fill(&channels_[0], &channels_[8], 0.0f);
   
   wave_map_ = allocator->Allocate<const int16_t*>(kNumWavesPerBank);
 }
@@ -116,7 +115,7 @@ inline float WavetableEngine::ReadWave(
 void WavetableEngine::Render(
     const Parameters& parameters,
     float f0,
-    int8_t channel,
+    PolySlopeGenerator::OutputSample* out,
     size_t size) {
   
   ONE_POLE(x_pre_lp_, parameters.shape * 6.9999f, 0.2f);
@@ -147,8 +146,8 @@ void WavetableEngine::Render(
       &previous_z_, static_cast<float>(z_integral) + z_fractional, size);
 
   ParameterInterpolator f0_modulation(&previous_f0_, f0, size);
-  int index = 0;
-  while (size--) {
+  
+  for (size_t index = 0; index < size; index++) {
     const float f0 = f0_modulation.Next();
     
     const float gain = (1.0f / (f0 * 131072.0f)) * (0.95f - f0);
@@ -182,15 +181,13 @@ void WavetableEngine::Render(
       int z0 = z_integral;
       int z1 = z_integral + 1;
       
-      z0 += channel;
-      z1 += channel;
+      //z0 += channel;
+      //z1 += channel;
 
       if (z0 >= 4) {
-        //z0 = 7 - z0;
         z0 -= 4;
       }
       if (z1 >= 4) {
-        z1 = 7 - z1;
         z1 -= 4;
       }
       
@@ -216,8 +213,7 @@ void WavetableEngine::Render(
 
       float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
       mix = diff_out_.Process(cutoff, mix) * gain;
-      channels_[index] = mix;
-      index += 1;
+      out[index].channel[0] = mix;
       //*aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
     }
   }
