@@ -306,13 +306,9 @@ void Process(IOBuffer::Block* block, size_t size) {
             //}
             
             wavetable_engine.Render(block->parameters, frequency, out, size);
-            //stmlib::ParameterInterpolator fold_modulation(&fold_, std::max(2.0f * (smoothness - 0.5f), 0.0f), size);
-            //float fold = std::max(2.0f * (block->parameters.smoothness - 0.5f), 0.0f);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       
-                //out[i].channel[0] = wavetable_engine.fold(out[i].channel[0], fold);
-                //wavetable_engine.filter(frequency, block->parameters.smoothness, out, size);
                 block->output[j][2 * i] = block->output[j][2 * i + 1] =
                     settings.dac_code(j, out[i].channel[0]);
                     //settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);

@@ -64,6 +64,7 @@ void WavetableEngine::Init(BufferAllocator* allocator) {
   fold_ = 0.0f;
 
   diff_out_.Init();
+  filter_.Init();
   
   wave_map_ = allocator->Allocate<const int16_t*>(kNumWavesPerBank);
 }
@@ -220,7 +221,7 @@ void WavetableEngine::Render(
       //*aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
     }
   }
-  filter(f0, parameters.smoothness, out, size);
+  filter(f0, parameters.smoothness, out, 1, size);
 }
 
 }  // namespace plaits

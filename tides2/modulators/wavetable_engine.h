@@ -35,6 +35,7 @@
 #include "stmlib/utils/buffer_allocator.h"
 #include "stmlib/dsp/dsp.h"
 #include "stmlib/dsp/units.h"
+#include "stmlib/dsp/filter.h"
 #include "tides2/io_buffer.h"
 #include "tides2/poly_slope_generator.h"
 
@@ -87,17 +88,16 @@ class WavetableEngine {
     return 5.0f * (bipolar + (folded - bipolar) * fold_amount);
   }
 
-  inline void filter(float frequency, float smoothness, PolySlopeGenerator::OutputSample* out, size_t size) {
+  inline void filter(float frequency, float smoothness, PolySlopeGenerator::OutputSample* out, int channels, size_t size) {
     if (smoothness < 0.5f) {
-      float ratio = smoothness * 2.0f;
-      ratio *= ratio;
-      ratio *= ratio;
-      
-      float f[1];
-      f[0] = frequency * 0.5f;
-      f[0] += (1.0f - f[0]) * ratio;
-      
-      filter_.Process<1>(f, &out[0].channel[0], size);
+      float filter_frequency = smoothness * 2.0f;
+      float cutoff = 0.2f * frequency * SemitonesToRatio(120.0f * filter_frequency);
+      filter_.set_f_q<FREQUENCY_FAST>(cutoff, 0.3f);
+      float o1;
+      for (size_t i = 0; i < size; ++i) {
+        o1 = filter_.Process<FILTER_MODE_LOW_PASS>(out[i].channel[0]);
+        out[i].channel[0] = filter_.Process<FILTER_MODE_LOW_PASS>(o1);
+      }
     }
   }
 
@@ -126,7 +126,7 @@ class WavetableEngine {
   const int16_t** wave_map_;
   
   Differentiator diff_out_;
-  Filter<1> filter_;
+  Svf filter_;
   
   DISALLOW_COPY_AND_ASSIGN(WavetableEngine);
 };
