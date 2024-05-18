@@ -220,7 +220,7 @@ void WavetableEngine::Render(
       //*aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
     }
   }
-  //filter(f0, parameters.smoothness, out, size);
+  filter(f0, parameters.smoothness, out, size);
 }
 
 }  // namespace plaits
