@@ -72,11 +72,10 @@ class WavetableEngine {
   ~WavetableEngine() { }
   
   virtual void Init(BufferAllocator* allocator);
-  virtual void Reset();
-  void LoadUserData();
   virtual void Render(const Parameters& parameters,
     float f0,
     PolySlopeGenerator::OutputSample* out,
+    int channels,
     size_t size);
 
   inline float fold(float bipolar, float fold_amount) {
@@ -92,20 +91,25 @@ class WavetableEngine {
     if (smoothness < 0.5f) {
       float filter_frequency = smoothness * 2.0f;
       float cutoff = 0.2f * frequency * SemitonesToRatio(120.0f * filter_frequency);
-      filter_.set_f_q<FREQUENCY_FAST>(cutoff, 0.3f);
+      
       float o1;
-      for (size_t i = 0; i < size; ++i) {
-        o1 = filter_.Process<FILTER_MODE_LOW_PASS>(out[i].channel[0]);
-        out[i].channel[0] = filter_.Process<FILTER_MODE_LOW_PASS>(o1);
+      for (int channel = 0; channel < channels; channel++) {
+        filter_[channel].set_f_q<FREQUENCY_FAST>(cutoff, 0.3f);
+
+        for (size_t i = 0; i < size; ++i) {
+          o1 = filter_[channel].Process<FILTER_MODE_LOW_PASS>(out[i].channel[channel]);
+          out[i].channel[channel] = filter_[channel].Process<FILTER_MODE_LOW_PASS>(o1);
+        }
       }
     }
   }
 
   
  private:
-  float ReadWave(int x, int y, int z, int phase_i, float phase_f);
+  //float ReadWave(int x, int y, int z, int phase_i, float phase_f);
    
   float phase_;
+  float phases_[4];
   
   float x_pre_lp_;
   float y_pre_lp_;
@@ -120,13 +124,15 @@ class WavetableEngine {
   float previous_z_;
   float previous_f0_;
   float fold_;
+  float lp_;
   
   // Maps a (bank, X, Y) coordinate to a waveform index.
   // This allows all waveforms to be reshuffled by the user to create new maps.
-  const int16_t** wave_map_;
+  //const int16_t** wave_map_;
   
   Differentiator diff_out_;
-  Svf filter_;
+  Differentiator diff_outs_[4];
+  Svf filter_[4];
   
   DISALLOW_COPY_AND_ASSIGN(WavetableEngine);
 };
@@ -147,6 +153,17 @@ inline float InterpolateWaveHermite(
     const float b_neg = w + a;
     const float f = index_fractional;
     return (((a * f) - b_neg) * f + c) * f + x0;
+}
+
+template<typename T>
+inline float InterpolateWave(
+    const T* table,
+    int32_t index_integral,
+    float index_fractional) {
+  float a = static_cast<float>(table[index_integral]);
+  float b = static_cast<float>(table[index_integral + 1]);
+  float t = index_fractional;
+  return a + (b - a) * t;
 }
 
 }  // namespace plaits

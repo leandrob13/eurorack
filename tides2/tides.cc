@@ -305,7 +305,7 @@ void Process(IOBuffer::Block* block, size_t size) {
             //  wavetable_engine[channel].Render(block->parameters, frequency, channel, size);
             //}
             
-            wavetable_engine.Render(block->parameters, frequency, out, size);
+            wavetable_engine.Render(block->parameters, frequency, out, 1, size);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       
@@ -358,7 +358,6 @@ void Init() {
     wavetable_engine[i].LoadUserData();
   }*/
   wavetable_engine.Init(&alloc);
-  wavetable_engine.LoadUserData();
   
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 
