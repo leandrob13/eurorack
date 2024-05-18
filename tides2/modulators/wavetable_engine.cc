@@ -46,7 +46,6 @@ const int kNumCustomWaves = 15;
 const size_t kTableSize = 128;
 const float kTableSizeF = float(kTableSize);
 
-
 void WavetableEngine::Init(BufferAllocator* allocator) {
   phase_ = 0.0f;
 
@@ -62,6 +61,7 @@ void WavetableEngine::Init(BufferAllocator* allocator) {
   previous_y_ = 0.0f;
   previous_z_ = 0.0f;
   previous_f0_ = a0;
+  fold_ = 0.0f;
 
   diff_out_.Init();
   
@@ -146,6 +146,8 @@ void WavetableEngine::Render(
       &previous_z_, static_cast<float>(z_integral) + z_fractional, size);
 
   ParameterInterpolator f0_modulation(&previous_f0_, f0, size);
+
+  ParameterInterpolator fold_modulation(&fold_, max(2.0f * (parameters.smoothness - 0.5f), 0.0f), size);
   
   for (size_t index = 0; index < size; index++) {
     const float f0 = f0_modulation.Next();
@@ -213,10 +215,12 @@ void WavetableEngine::Render(
 
       float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
       mix = diff_out_.Process(cutoff, mix) * gain;
-      out[index].channel[0] = mix;
+      //out[index].channel[0] = mix; 
+      out[index].channel[0] = fold(mix, fold_modulation.Next());
       //*aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
     }
   }
+  //filter(f0, parameters.smoothness, out, size);
 }
 
 }  // namespace plaits

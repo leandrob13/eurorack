@@ -78,6 +78,29 @@ class WavetableEngine {
     PolySlopeGenerator::OutputSample* out,
     size_t size);
 
+  inline float fold(float bipolar, float fold_amount) {
+    //float bipolar = 2.0f * unipolar - 1.0f;
+    float folded = fold_amount > 0.0f ? stmlib::Interpolate(
+        lut_bipolar_fold,
+        0.5f + bipolar * (0.03f + 0.46f * fold_amount),
+        1024.0f) : 0.0f;
+    return 5.0f * (bipolar + (folded - bipolar) * fold_amount);
+  }
+
+  inline void filter(float frequency, float smoothness, PolySlopeGenerator::OutputSample* out, size_t size) {
+    if (smoothness < 0.5f) {
+      float ratio = smoothness * 2.0f;
+      ratio *= ratio;
+      ratio *= ratio;
+      
+      float f[1];
+      f[0] = frequency * 0.5f;
+      f[0] += (1.0f - f[0]) * ratio;
+      
+      filter_.Process<1>(f, &out[0].channel[0], size);
+    }
+  }
+
   
  private:
   float ReadWave(int x, int y, int z, int phase_i, float phase_f);
@@ -96,12 +119,14 @@ class WavetableEngine {
   float previous_y_;
   float previous_z_;
   float previous_f0_;
+  float fold_;
   
   // Maps a (bank, X, Y) coordinate to a waveform index.
   // This allows all waveforms to be reshuffled by the user to create new maps.
   const int16_t** wave_map_;
   
   Differentiator diff_out_;
+  Filter<1> filter_;
   
   DISALLOW_COPY_AND_ASSIGN(WavetableEngine);
 };
