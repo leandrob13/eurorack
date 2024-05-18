@@ -40,7 +40,7 @@ using namespace stmlib;
 
 //const int kNumBanks = 4;
 //const int kNumWavesPerBank = 64;
-const size_t table_size = 128;
+const size_t table_size = 256;
 const float table_size_f = float(table_size);
 //const int kNumWaves = 192;
 
