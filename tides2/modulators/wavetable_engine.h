@@ -109,7 +109,6 @@ class WavetableEngine {
   //float ReadWave(int x, int y, int z, int phase_i, float phase_f);
    
   float phase_;
-  float phases_[4];
   
   float x_pre_lp_;
   float y_pre_lp_;
@@ -124,13 +123,7 @@ class WavetableEngine {
   float previous_z_;
   float previous_f0_;
   float fold_;
-  float lp_;
-  
-  // Maps a (bank, X, Y) coordinate to a waveform index.
-  // This allows all waveforms to be reshuffled by the user to create new maps.
-  //const int16_t** wave_map_;
-  
-  Differentiator diff_out_;
+
   Differentiator diff_outs_[4];
   Svf filter_[4];
   

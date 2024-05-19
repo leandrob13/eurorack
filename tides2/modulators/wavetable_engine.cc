@@ -63,12 +63,9 @@ void WavetableEngine::Init() {
   previous_z_ = 0.0f;
   previous_f0_ = a0;
   fold_ = 0.0f;
-  lp_ = 0.0f;
-
-  diff_out_.Init();
+  
   for (int i = 0; i < 4; i++) {
     filter_[i].Init();
-    phases_[i] = 0.0f;
   }
 }
 
@@ -150,13 +147,13 @@ void WavetableEngine::Render(
     MAKE_INTEGRAL_FRACTIONAL(y);
     MAKE_INTEGRAL_FRACTIONAL(z);
 
-    //phase_ += f0;
-    //if (phase_ >= 1.0f) {
-    //  phase_ -= 1.0f;
-    //}
+    phase_ += f0;
+    if (phase_ >= 1.0f) {
+      phase_ -= 1.0f;
+    }
     
-    //const float p = phase_ * kTableSizeF;
-    //MAKE_INTEGRAL_FRACTIONAL(p);
+    const float p = phase_ * table_size;
+    MAKE_INTEGRAL_FRACTIONAL(p);
 
     int x0 = x_integral;
     int x1 = x_integral + 1;
@@ -164,13 +161,6 @@ void WavetableEngine::Render(
     int y1 = y_integral + 1;
 
     for (int channel = 0; channel < channels; channel++){
-      phases_[channel] += f0;
-      if (phases_[channel] >= 1.0f) {
-        phases_[channel] -= 1.0f;
-      }
-
-      const float p = phases_[channel] * table_size_f;
-      MAKE_INTEGRAL_FRACTIONAL(p);
 
       int z0 = z_integral + channel;
       int z1 = z0 + 1;
@@ -208,7 +198,6 @@ void WavetableEngine::Render(
       float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
       mix = diff_outs_[channel].Process(cutoff, mix * gain);
       //ONE_POLE(lp_, mix, cutoff);
-      //out[index].channel[0] = mix; 
       out[index].channel[channel] = fold(mix, fold_modulation.Next());
     }
   }
