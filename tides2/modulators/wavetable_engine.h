@@ -71,7 +71,7 @@ class WavetableEngine {
   WavetableEngine() { }
   ~WavetableEngine() { }
   
-  virtual void Init(BufferAllocator* allocator);
+  virtual void Init();
   virtual void Render(const Parameters& parameters,
     float f0,
     PolySlopeGenerator::OutputSample* out,
@@ -137,27 +137,25 @@ class WavetableEngine {
   DISALLOW_COPY_AND_ASSIGN(WavetableEngine);
 };
 
-template<typename T>
 inline float InterpolateWaveHermite(
-    const T* table,
+    const int16_t* table,
     int32_t index_integral,
     float index_fractional) {
-    const float xm1 = static_cast<float>(table[index_integral]);
-    const float x0 = static_cast<float>(table[index_integral + 1]);
-    const float x1 = static_cast<float>(table[index_integral + 2]);
-    const float x2 = static_cast<float>(table[index_integral + 3]);
-    const float c = (x1 - xm1) * 0.5f;
-    const float v = x0 - x1;
-    const float w = c + v;
-    const float a = w + v + (x2 - x0) * 0.5f;
-    const float b_neg = w + a;
-    const float f = index_fractional;
-    return (((a * f) - b_neg) * f + c) * f + x0;
+  const float xm1 = table[index_integral];
+  const float x0 = table[index_integral + 1];
+  const float x1 = table[index_integral + 2];
+  const float x2 = table[index_integral + 3];
+  const float c = (x1 - xm1) * 0.5f;
+  const float v = x0 - x1;
+  const float w = c + v;
+  const float a = w + v + (x2 - x0) * 0.5f;
+  const float b_neg = w + a;
+  const float f = index_fractional;
+  return (((a * f) - b_neg) * f + c) * f + x0;
 }
 
-template<typename T>
 inline float InterpolateWave(
-    const T* table,
+    const int16_t* table,
     int32_t index_integral,
     float index_fractional) {
   float a = static_cast<float>(table[index_integral]);

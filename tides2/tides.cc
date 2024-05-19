@@ -53,7 +53,6 @@ const bool test_adc_noise = false;
 const size_t kDacBlockSize = 2;
 
 int16_t buffer[1024];
-BufferAllocator alloc(buffer, 1024);
 
 // #define PROFILE_INTERRUPT
 
@@ -67,7 +66,6 @@ PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
 PolyLfo poly_lfo;
 Attractors attractors;
-//WavetableEngine wavetable_engine[4];
 WavetableEngine wavetable_engine;
 Settings settings;
 Ui ui;
@@ -300,18 +298,13 @@ void Process(IOBuffer::Block* block, size_t size) {
           break;
         case OUTPUT_MODE_SLOPE_PHASE:
         case OUTPUT_MODE_FREQUENCY:  
-          {
-            //for (size_t channel = 0; channel < kNumCvOutputs; channel++) {
-            //  wavetable_engine[channel].Render(block->parameters, frequency, channel, size);
-            //}
-            
+          { 
             wavetable_engine.Render(block->parameters, frequency, out, 1, size);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       
                 block->output[j][2 * i] = block->output[j][2 * i + 1] =
                     settings.dac_code(j, out[i].channel[0]);
-                    //settings.dac_code(j, wavetable_engine[j].channel(i) * 6.0f);
               }
             }
           }
@@ -353,11 +346,7 @@ void Init() {
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
   poly_lfo.Init();
   attractors.Init();
-  /*for (size_t i = 0; i < 4; i++) {
-    wavetable_engine[i].Init(&alloc);
-    wavetable_engine[i].LoadUserData();
-  }*/
-  wavetable_engine.Init(&alloc);
+  wavetable_engine.Init();
   
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 

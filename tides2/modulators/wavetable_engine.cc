@@ -40,14 +40,14 @@ using namespace stmlib;
 
 //const int kNumBanks = 4;
 //const int kNumWavesPerBank = 64;
-const size_t table_size = 256;
+const size_t table_size = 128;
 const float table_size_f = float(table_size);
 //const int kNumWaves = 192;
 
 //const size_t kTableSize = 128;
 //const float kTableSizeF = float(kTableSize);
 
-void WavetableEngine::Init(BufferAllocator* allocator) {
+void WavetableEngine::Init() {
   phase_ = 0.0f;
 
   x_lp_ = 0.0f;
@@ -70,8 +70,6 @@ void WavetableEngine::Init(BufferAllocator* allocator) {
     filter_[i].Init();
     phases_[i] = 0.0f;
   }
-  
-  //wave_map_ = allocator->Allocate<const int16_t*>(kNumWavesPerBank);
 }
 
 inline float ReadWave(
@@ -95,18 +93,6 @@ inline float Clamp(float x, float amount) {
   x += 0.5f;
   return x;
 }
-/*
-inline float WavetableEngine::ReadWave(
-    int x,
-    int y,
-    int z,
-    int phase_integral,
-    float phase_fractional) {
-  return InterpolateWave(
-      wave_map_[x + y * 8 + z * kNumWavesPerBank],
-      phase_integral,
-      phase_fractional);
-}*/
 
 void WavetableEngine::Render(
     const Parameters& parameters,
@@ -224,10 +210,9 @@ void WavetableEngine::Render(
       //ONE_POLE(lp_, mix, cutoff);
       //out[index].channel[0] = mix; 
       out[index].channel[channel] = fold(mix, fold_modulation.Next());
-      //*aux++ = static_cast<float>(static_cast<int>(mix * 32.0f)) / 32.0f;
     }
   }
   filter(f0, parameters.smoothness, out, channels, size);
 }
 
-}  // namespace plaits
+}  // namespace tides
