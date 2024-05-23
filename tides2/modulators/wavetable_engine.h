@@ -43,6 +43,8 @@ namespace tides {
 using namespace stmlib;
 
 const float a0 = (440.0f / 8.0f) / kSampleRate;
+const size_t table_size = 128;
+const float table_size_f = float(table_size);
 
 class Differentiator {
  public:
@@ -72,44 +74,125 @@ class WavetableEngine {
   ~WavetableEngine() { }
   
   virtual void Init();
+
   virtual void Render(const Parameters& parameters,
     float f0,
     PolySlopeGenerator::OutputSample* out,
-    int channels,
     size_t size);
 
-  inline float fold(float bipolar, float fold_amount) {
-    //float bipolar = 2.0f * unipolar - 1.0f;
-    float folded = fold_amount > 0.0f ? stmlib::Interpolate(
-        lut_bipolar_fold,
-        0.5f + bipolar * (0.03f + 0.46f * fold_amount),
-        1024.0f) : 0.0f;
-    return 5.0f * (bipolar + (folded - bipolar) * fold_amount);
-  }
-
-  inline void filter(float frequency, float smoothness, PolySlopeGenerator::OutputSample* out, int channels, size_t size) {
-    if (smoothness < 0.5f) {
-      float filter_frequency = smoothness * 2.0f;
-      float cutoff = 0.2f * frequency * SemitonesToRatio(120.0f * filter_frequency);
-      
-      float o1;
-      for (int channel = 0; channel < channels; channel++) {
-        filter_[channel].set_f_q<FREQUENCY_FAST>(cutoff, 0.3f);
-
-        for (size_t i = 0; i < size; ++i) {
-          o1 = filter_[channel].Process<FILTER_MODE_LOW_PASS>(out[i].channel[channel]);
-          out[i].channel[channel] = filter_[channel].Process<FILTER_MODE_LOW_PASS>(o1);
-        }
-      }
+  inline float fold(float value, float fold_amount, bool bipolar) {
+    if (bipolar) {
+      float folded = fold_amount > 0.0f ? stmlib::Interpolate(
+          lut_bipolar_fold,
+          0.5f + value * (0.03f + 0.46f * fold_amount),
+          1024.0f) : 0.0f;
+      return 5.0f * (value + (folded - value) * fold_amount);
+    } else {
+      value = (value + 1.0f) / 2.0f;
+      float folded = fold_amount > 0.0f ? stmlib::Interpolate(
+          lut_unipolar_fold,
+          value * fold_amount,
+          1024.0f) : 0.0f;
+      return 8.0f * (value + (folded - value) * fold_amount);
     }
   }
 
+  inline float warps_fold(float value, float fold_amount) {
+    const float kScale = 2048.0f / ((1.0f + 1.0f + 0.25f) * 1.02f);
+    float amount = 0.02f + fold_amount;
+    float folded = Interpolate(lut_warps_bipolar_fold + 2048, value * amount, kScale) * -10.0f;
+    return folded;
+  }
+
+  inline void filter(float frequency, float smoothness, PolySlopeGenerator::OutputSample* out, size_t size) {
+    if (smoothness < 0.5f) {
+      float ratio = smoothness * 2.0f;
+      ratio *= ratio;
+      ratio *= ratio;
+      
+      float f[4];
+      for (size_t i = 0; i < 4; ++i) {
+        f[i] = frequency * 0.5f;
+        f[i] += (1.0f - f[i]) * ratio;
+      }
+      fl.Process<4>(f, &out[0].channel[0], size);
+    }
+  }
+
+  inline float BandLimitedPulse(float phase, float frequency, float pw) {
+    CONSTRAIN(pw, frequency * 2.0f, 1.0f - 2.0f * frequency);
+    
+    float this_sample = next_sample_;
+    float next_sample = 0.0f;
+    
+    float wrap_point = pw;
+    if (phase < pw * 0.5f) {
+      wrap_point = 0.0f;
+    } else if (phase > 0.5f + pw * 0.5f) {
+      wrap_point = 1.0f;
+    }
+    
+    const float d = phase - wrap_point;
+    
+    if (d >= 0.0f && d < frequency) {
+      const float t = d / frequency;
+      float discontinuity = 1.0f;
+      if (wrap_point != pw) {
+        discontinuity = -discontinuity;
+      }
+      if (frequency < 0.0f) {
+        discontinuity = -discontinuity;
+      }
+      this_sample += stmlib::ThisBlepSample(t) * discontinuity;
+      next_sample += stmlib::NextBlepSample(t) * discontinuity;
+    }
+    
+    next_sample += phase < pw ? 0.0f : 1.0f;
+    next_sample_ = next_sample;
+    
+    return 10.0f * this_sample - 5.0f;
+  }
   
+  inline float BandLimitedSlope(float phase, float frequency, float pw) {
+    
+    CONSTRAIN(pw, fabsf(frequency) * 2.0f, 1.0f - 2.0f * fabsf(frequency));
+
+    float this_sample = next_sample_tri_;
+    float next_sample = 0.0f;
+    
+    float wrap_point = pw;
+    if (phase < pw * 0.5f) {
+      wrap_point = 0.0f;
+    } else if (phase > 0.5f + pw * 0.5f) {
+      wrap_point = 1.0f;
+    }
+    
+    const float slope_up = 1.0f / pw;
+    const float slope_down = 1.0f / (1.0f - pw);
+    const float d = phase - wrap_point;
+    
+    if (d >= 0.0f && d < frequency) {
+      const float t = d / frequency;
+      float discontinuity = -(slope_up + slope_down) * frequency;
+      if (wrap_point != pw) {
+        discontinuity = -discontinuity;
+      }
+      if (frequency < 0.0f) {
+        discontinuity = -discontinuity;
+      }
+      this_sample += stmlib::ThisIntegratedBlepSample(t) * discontinuity;
+      next_sample += stmlib::NextIntegratedBlepSample(t) * discontinuity;
+    }
+    
+    next_sample += phase < pw
+      ? phase * slope_up
+      : 1.0f - (phase - pw) * slope_down;
+    next_sample_tri_ = next_sample;
+    
+    return 2.0f * this_sample - 1.0f;
+  }
+
  private:
-  //float ReadWave(int x, int y, int z, int phase_i, float phase_f);
-   
-  float phase_;
-  
   float x_pre_lp_;
   float y_pre_lp_;
   float z_pre_lp_;
@@ -122,10 +205,14 @@ class WavetableEngine {
   float previous_y_;
   float previous_z_;
   float previous_f0_;
-  float fold_;
 
-  Differentiator diff_outs_[4];
-  Svf filter_[4];
+  float fold_;
+  float phases_[2];
+  float next_sample_;
+  float next_sample_tri_;
+
+  Differentiator diff_out_;
+  Filter<4> fl;
   
   DISALLOW_COPY_AND_ASSIGN(WavetableEngine);
 };

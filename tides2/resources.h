@@ -55,6 +55,7 @@ extern const int16_t* lookup_table_i16_table[];
 extern const float lut_sine[];
 extern const float lut_bipolar_fold[];
 extern const float lut_unipolar_fold[];
+extern const float lut_warps_bipolar_fold[];
 extern const int16_t lut_wavetable[];
 #define LUT_SINE 0
 #define LUT_SINE_SIZE 1281

@@ -52,8 +52,6 @@ const bool skip_factory_test = false;
 const bool test_adc_noise = false;
 const size_t kDacBlockSize = 2;
 
-int16_t buffer[1024];
-
 // #define PROFILE_INTERRUPT
 
 CvReader cv_reader;
@@ -299,12 +297,12 @@ void Process(IOBuffer::Block* block, size_t size) {
         case OUTPUT_MODE_SLOPE_PHASE:
         case OUTPUT_MODE_FREQUENCY:  
           { 
-            wavetable_engine.Render(block->parameters, frequency, out, 1, size);
+            wavetable_engine.Render(block->parameters, frequency, out, size);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       
                 block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                    settings.dac_code(j, out[i].channel[0]);
+                    settings.dac_code(j, out[i].channel[j]);
               }
             }
           }

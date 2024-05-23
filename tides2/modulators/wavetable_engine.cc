@@ -38,18 +38,7 @@ namespace tides {
 using namespace std;
 using namespace stmlib;
 
-//const int kNumBanks = 4;
-//const int kNumWavesPerBank = 64;
-const size_t table_size = 128;
-const float table_size_f = float(table_size);
-//const int kNumWaves = 192;
-
-//const size_t kTableSize = 128;
-//const float kTableSizeF = float(kTableSize);
-
 void WavetableEngine::Init() {
-  phase_ = 0.0f;
-
   x_lp_ = 0.0f;
   y_lp_ = 0.0f;
   z_lp_ = 0.0f;
@@ -63,24 +52,12 @@ void WavetableEngine::Init() {
   previous_z_ = 0.0f;
   previous_f0_ = a0;
   fold_ = 0.0f;
-  
-  for (int i = 0; i < 4; i++) {
-    filter_[i].Init();
-  }
-}
-
-inline float ReadWave(
-    int x,
-    int y,
-    int z,
-    int randomize,
-    int phase_integral,
-    float phase_fractional) {
-  int wave = ((x + y * 8 + z * 64) * randomize) % 192;
-  return InterpolateWaveHermite(
-      wav_integrated_waves + wave * (table_size + 4),
-      phase_integral,
-      phase_fractional);
+  next_sample_ = 0.0f;
+  phases_[0] = 0.0f;
+  phases_[1] = 0.0f;
+  next_sample_tri_ = 0.0f;
+  diff_out_.Init();
+  fl.Init();
 }
 
 inline float Clamp(float x, float amount) {
@@ -91,16 +68,29 @@ inline float Clamp(float x, float amount) {
   return x;
 }
 
+inline float ReadWave(
+  int x,
+  int y,
+  int z,
+  int randomize,
+  int phase_integral,
+  float phase_fractional) {
+  int wave = ((x + y * 8 + z * 64) * randomize) % 192;
+  return InterpolateWaveHermite(
+      wav_integrated_waves + wave * (table_size + 4),
+      phase_integral,
+      phase_fractional);
+}
+
 void WavetableEngine::Render(
     const Parameters& parameters,
     float f0,
     PolySlopeGenerator::OutputSample* out,
-    int channels,
     size_t size) {
   
-  ONE_POLE(x_pre_lp_, parameters.shape * 6.9999f, 0.2f);
-  ONE_POLE(y_pre_lp_, parameters.slope * 6.9999f, 0.2f);
-  ONE_POLE(z_pre_lp_, parameters.shift * 2.9999f, 0.05f);
+  ONE_POLE(x_pre_lp_, parameters.slope * 6.9999f, 0.2f);
+  ONE_POLE(y_pre_lp_, parameters.shift * 6.9999f, 0.2f);
+  ONE_POLE(z_pre_lp_, parameters.shape * 2.9999f, 0.05f);
   
   const float x = x_pre_lp_;
   const float y = y_pre_lp_;
@@ -128,9 +118,10 @@ void WavetableEngine::Render(
   ParameterInterpolator f0_modulation(&previous_f0_, f0, size);
 
   ParameterInterpolator fold_modulation(&fold_, max(2.0f * (parameters.smoothness - 0.5f), 0.0f), size);
-  
+
   for (size_t index = 0; index < size; index++) {
     const float f0 = f0_modulation.Next();
+    const float sub_f = f0 * 0.5f;
     
     const float gain = (1.0f / (f0 * 131072.0f)) * (0.95f - f0);
     const float cutoff = min(table_size_f * f0, 1.0f);
@@ -147,61 +138,63 @@ void WavetableEngine::Render(
     MAKE_INTEGRAL_FRACTIONAL(y);
     MAKE_INTEGRAL_FRACTIONAL(z);
 
-    phase_ += f0;
-    if (phase_ >= 1.0f) {
-      phase_ -= 1.0f;
+    for (int i = 0; i < 2; i++) {
+      phases_[i] += i == 0 ? f0 : sub_f;
+      if (phases_[i] >= 1.0f) {
+        phases_[i] -= 1.0f;
+      }
     }
     
-    const float p = phase_ * table_size;
+    const float p = phases_[0] * table_size;
     MAKE_INTEGRAL_FRACTIONAL(p);
 
     int x0 = x_integral;
     int x1 = x_integral + 1;
     int y0 = y_integral;
     int y1 = y_integral + 1;
+    int z0 = z_integral;
+    int z1 = z_integral + 1;
 
-    for (int channel = 0; channel < channels; channel++){
-
-      int z0 = z_integral + channel;
-      int z1 = z0 + 1;
-
-      if (z0 >= 4) {
-        z0 -= 4;
-      }
-      if (z1 >= 4) {
-        z1 -= 4;
-      }
-
-      int r0 = z0 == 3 ? 101 : 1;
-      int r1 = z1 == 3 ? 101 : 1;
-      
-      float x0y0z0 = ReadWave(x0, y0, z0, r0, p_integral, p_fractional);
-      float x1y0z0 = ReadWave(x1, y0, z0, r0, p_integral, p_fractional);
-      float xy0z0 = x0y0z0 + (x1y0z0 - x0y0z0) * x_fractional;
-
-      float x0y1z0 = ReadWave(x0, y1, z0, r0, p_integral, p_fractional);
-      float x1y1z0 = ReadWave(x1, y1, z0, r0, p_integral, p_fractional);
-      float xy1z0 = x0y1z0 + (x1y1z0 - x0y1z0) * x_fractional;
-
-      float xyz0 = xy0z0 + (xy1z0 - xy0z0) * y_fractional;
-
-      float x0y0z1 = ReadWave(x0, y0, z1, r1, p_integral, p_fractional);
-      float x1y0z1 = ReadWave(x1, y0, z1, r1, p_integral, p_fractional);
-      float xy0z1 = x0y0z1 + (x1y0z1 - x0y0z1) * x_fractional;
-
-      float x0y1z1 = ReadWave(x0, y1, z1, r1, p_integral, p_fractional);
-      float x1y1z1 = ReadWave(x1, y1, z1, r1, p_integral, p_fractional);
-      float xy1z1 = x0y1z1 + (x1y1z1 - x0y1z1) * x_fractional;
-      
-      float xyz1 = xy0z1 + (xy1z1 - xy0z1) * y_fractional;
-
-      float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
-      mix = diff_outs_[channel].Process(cutoff, mix * gain);
-      //ONE_POLE(lp_, mix, cutoff);
-      out[index].channel[channel] = fold(mix, fold_modulation.Next());
+    if (z0 >= 4) {
+      z0 -= 4;
     }
+    if (z1 >= 4) {
+      z1 -= 4;
+    }
+
+    int r0 = z0 == 3 ? 101 : 1;
+    int r1 = z1 == 3 ? 101 : 1;
+    
+    float x0y0z0 = ReadWave(x0, y0, z0, r0, p_integral, p_fractional);
+    float x1y0z0 = ReadWave(x1, y0, z0, r0, p_integral, p_fractional);
+    float xy0z0 = x0y0z0 + (x1y0z0 - x0y0z0) * x_fractional;
+
+    float x0y1z0 = ReadWave(x0, y1, z0, r0, p_integral, p_fractional);
+    float x1y1z0 = ReadWave(x1, y1, z0, r0, p_integral, p_fractional);
+    float xy1z0 = x0y1z0 + (x1y1z0 - x0y1z0) * x_fractional;
+
+    float xyz0 = xy0z0 + (xy1z0 - xy0z0) * y_fractional;
+
+    float x0y0z1 = ReadWave(x0, y0, z1, r1, p_integral, p_fractional);
+    float x1y0z1 = ReadWave(x1, y0, z1, r1, p_integral, p_fractional);
+    float xy0z1 = x0y0z1 + (x1y0z1 - x0y0z1) * x_fractional;
+
+    float x0y1z1 = ReadWave(x0, y1, z1, r1, p_integral, p_fractional);
+    float x1y1z1 = ReadWave(x1, y1, z1, r1, p_integral, p_fractional);
+    float xy1z1 = x0y1z1 + (x1y1z1 - x0y1z1) * x_fractional;
+    
+    float xyz1 = xy0z1 + (xy1z1 - xy0z1) * y_fractional;
+
+    float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
+    mix = diff_out_.Process(cutoff, mix) * gain;
+    float fold_amount = fold_modulation.Next();
+
+    out[index].channel[0] = fold(mix, fold_amount, true);
+    out[index].channel[1] = fold(mix, fold_amount * 0.65f, false);
+    out[index].channel[2] = warps_fold(BandLimitedSlope(phases_[1], sub_f, 0.5f), fold_amount);
+    out[index].channel[3] = BandLimitedPulse(phases_[1], sub_f, 0.5f);
   }
-  filter(f0, parameters.smoothness, out, channels, size);
+  filter(f0, parameters.smoothness, out, size);
 }
 
 }  // namespace tides
