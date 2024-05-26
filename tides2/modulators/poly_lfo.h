@@ -40,7 +40,7 @@ using namespace stmlib;
 using namespace std;
 
 const uint8_t kNumChannels = 4;
-const uint8_t num_waves = 16;
+const uint8_t num_waves = 17;
 
 class PolyLfo {
  public:
@@ -123,8 +123,8 @@ const uint8_t* const wavetable[] = {
   WAVE(12),
   WAVE(13),
   WAVE(14),
-  WAVE(15)
-  //WAVE(16)
+  WAVE(15),
+  WAVE(16)
 };
 #endif
 #ifndef LFO
@@ -257,9 +257,7 @@ class PolyLfo2 {
     const float x1 = InterpolateWave(
         wavetable[waveform_integral + 1], p_integral, p_fractional);
     
-    const float s = (x0 + (x1 - x0) * waveform_fractional); //differentiator_.Process(
-    //    cutoff,
-    //    (x0 + (x1 - x0) * waveform_fractional));
+    const float s = (x0 + (x1 - x0) * waveform_fractional);
     //ONE_POLE(lp_, s, cutoff);
     out[0].channel[i] = s; //(x0 + (x1 - x0) * waveform_fractional);//Crossfade(value_a, value_b, p_fractional);
     /*waveform += shape_spread_ * max_index;
