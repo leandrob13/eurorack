@@ -106,6 +106,23 @@ inline float InterpolateWave(
   return a + (b - a) * t;
 }
 
+inline float InterpolateWaveHermite(
+    const uint8_t* table,
+    int32_t index_integral,
+    float index_fractional) {
+  const float xm1 = table[index_integral];
+  const float x0 = table[index_integral + 1];
+  const float x1 = table[index_integral + 2];
+  const float x2 = table[index_integral + 3];
+  const float c = (x1 - xm1) * 0.5f;
+  const float v = x0 - x1;
+  const float w = c + v;
+  const float a = w + v + (x2 - x0) * 0.5f;
+  const float b_neg = w + a;
+  const float f = index_fractional;
+  return (((a * f) - b_neg) * f + c) * f + x0;
+}
+
 const uint16_t wavetable_size = 257;
 
 #define WAVE(wave) &wt_lfo_waveforms[wave * 257]
@@ -147,25 +164,21 @@ class PolyLfo2 {
       phase_[i] = 0.0f;
     }
   }
+
   void Render(float frequency, PolySlopeGenerator::OutputSample* out) {
 
     const float cutoff = min(float(wavetable_size) * frequency, 1.0f);  
   // Advance phasors.
-    if (spread_ >= 0.5f) {
+    if (spread_ > 0.5f) {
       float phase_difference = (spread_ - 0.5f);
-
       for (size_t i = 0; i < kNumChannels; i++) {
         phase_[i] = i == 0 ? phase_[i] + frequency : phase_[i - 1] + phase_difference;
         if (phase_[i] >= 1.0f) {
           phase_[i] -= 1.0f;
         }
       }
-      
     } else {
       float spread = 2.0f * (1.0f - spread_);
-      //float x = (0.5 - spread_);
-      //float scaled = (x + 2.0f * x * x) * 0.5f;
-      //float spread = 2.0f * (0.5f + scaled);
       for (uint8_t i = 0; i < kNumChannels; ++i) {
         phase_[i] += frequency;
         if (phase_[i] >= 1.0f) {
@@ -174,13 +187,12 @@ class PolyLfo2 {
         frequency *= spread;
       }
     }
+
+  float max_index = float(num_waves - 1);
+  float waveform = shape_ * max_index;
+  const uint8_t* sine = &wt_lfo_waveforms[17 * 257];  
   
-  //const uint8_t* sine = &wt_lfo_waveforms[17 * 257];
-  
-  /*uint16_t wavetable_index = shape_;
-  // Wavetable lookup
   for (uint8_t i = 0; i < kNumChannels; ++i) {
-    
     float phase = phase_[i];
 
     if (coupling_ > 0.0f) {
@@ -191,37 +203,19 @@ class PolyLfo2 {
     if (phase >= 1.0f) {
       phase -= 1.0f;
     }
-    const float p = phase * 257;
-    MAKE_INTEGRAL_FRACTIONAL(p);
-    const uint8_t* a = &wt_lfo_waveforms[(wavetable_index >> 12) * 257];
-    const uint8_t* b = a + 257;
-    float value_a = InterpolateWave(a, p_integral, p_fractional);
-    float value_b = InterpolateWave(b, p_integral, p_fractional);
 
-    //int16_t value = Crossfade(value_a, value_b, p_fractional);
-    //value_[i] = InterpolateWave(sine, p_integral, p_fractional);
-    out_[i] = Crossfade(value_a, value_b, p_fractional);//static_cast<uint16_t>(value + 32768);
-    //wavetable_index += shape_spread_;
-  }*/
-  ///////////////////////////////////////
-
-  float max_index = float(num_waves - 1);
-  float waveform = shape_ * max_index;
-    
-  
-  for (uint8_t i = 0; i < kNumChannels; ++i) {
     MAKE_INTEGRAL_FRACTIONAL(waveform);
     
-    const float p = phase_[i] * float(wavetable_size);
+    const float p = phase * float(wavetable_size);
     MAKE_INTEGRAL_FRACTIONAL(p);
-    
-    const float x0 = InterpolateWave(
-        wavetable[waveform_integral], p_integral, p_fractional);
-    const float x1 = InterpolateWave(
-        wavetable[waveform_integral + 1], p_integral, p_fractional);
+    // check looping with % operator
+    const float x0 = InterpolateWave(wavetable[waveform_integral], p_integral, p_fractional);
+    const float x1 = InterpolateWave(wavetable[(waveform_integral + 1)], p_integral, p_fractional);
     
     const float s = (x0 + (x1 - x0) * waveform_fractional);
     ONE_POLE(lp_, s, cutoff);
+
+    value_[i] = InterpolateWave(sine, p_integral, p_fractional) / 512.0f;
     out[0].channel[i] = lp_; 
 
     waveform += shape_spread_ * max_index;
@@ -236,24 +230,20 @@ class PolyLfo2 {
   inline void set_shape(float shape) {
     shape_ = shape;
   }
+
   inline void set_shape_spread(float shape_spread) {
     shape_spread_ = (shape_spread - 0.5f) / 2.0f;
   }
+
   inline void set_spread(float spread) {
     spread_ = spread;
   }
+
   inline void set_coupling(float coupling) {
-    //int32_t x = coupling - 32768;
-    //int32_t scaled = x * x >> 15;
-    //scaled = x > 0 ? scaled : - scaled;
-    //scaled = (x + 3 * scaled) >> 2;
-    //coupling_ = (scaled >> 4) * 10;
     coupling_ = coupling - 0.5f;
-    
   }
 
  private:
-
   float shape_;
   float shape_spread_;
   float spread_;

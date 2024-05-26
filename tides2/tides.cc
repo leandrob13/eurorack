@@ -289,7 +289,7 @@ void Process(IOBuffer::Block* block, size_t size) {
             poly_lfo2.set_shape(block->parameters.shape);
             poly_lfo2.set_shape_spread(block->parameters.slope);
             poly_lfo2.set_spread(block->parameters.smoothness);
-            poly_lfo2.set_coupling(block->lfo_parameters.coupling_);
+            poly_lfo2.set_coupling(block->parameters.shift);
 
             poly_lfo2.Render(frequency, out);
 
