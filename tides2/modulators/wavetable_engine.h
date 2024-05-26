@@ -29,8 +29,6 @@
 #ifndef TIDES2_MODULATORS_ENGINE_WAVETABLE_ENGINE_H_
 #define TIDES2_MODULATORS_ENGINE_WAVETABLE_ENGINE_H_
 
-//#include "plaits/dsp/engine/engine.h"
-//#include "plaits/dsp/oscillator/wavetable_oscillator.h"
 //#include "stmlib/stmlib.h"
 #include "stmlib/utils/buffer_allocator.h"
 #include "stmlib/dsp/dsp.h"

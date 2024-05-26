@@ -128,10 +128,10 @@ void CvReader::Read(IOBuffer::Block* block) {
         1.0f);
   }
   
-  block->lfo_parameters.shape_ = static_cast<uint16_t>(block->parameters.shape * 65536.0f);
-  block->lfo_parameters.spread_ = static_cast<uint16_t>(block->parameters.shift * 65536.0f);
-  block->lfo_parameters.shape_spread_ = static_cast<uint16_t>(block->parameters.smoothness * 65536.0f);
-  block->lfo_parameters.coupling_ = static_cast<uint16_t>(block->parameters.slope * 65536.0f);
+  block->lfo_parameters.shape_ = static_cast<uint16_t>(block->parameters.shape * 65535.0f);
+  block->lfo_parameters.shape_spread_ = static_cast<uint16_t>(block->parameters.slope * 65535.0f);
+  block->lfo_parameters.spread_ = static_cast<uint16_t>(block->parameters.smoothness * 65535.0f);
+  block->lfo_parameters.coupling_ = static_cast<uint16_t>(block->parameters.shift * 65535.0f);
   
   cv_adc_.Convert();
   pots_adc_.Convert();

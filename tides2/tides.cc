@@ -62,6 +62,7 @@ HysteresisQuantizer2 ratio_index_quantizer;
 IOBuffer io_buffer;
 PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
+PolyLfo2 poly_lfo2;
 PolyLfo poly_lfo;
 Attractors attractors;
 WavetableEngine wavetable_engine;
@@ -109,13 +110,6 @@ static const float kRoot[3] = {
   0.125f / kSampleRate,
   2.0f / kSampleRate,
   130.81f / kSampleRate
-};
-
-static const float kOffset[3] = {
-  //8192.0f,
-  16384.0f,
-  32768.0f,
-  49152.0f
 };
 
 static Ratio kRatios[20] = {
@@ -191,8 +185,6 @@ void Process(IOBuffer::Block* block, size_t size) {
   }
 
   float frequency;
-  float offset;
-  float multiplier;
   if (block->input_patched[1]) {
     if (must_reset_ramp_extractor) {
       ramp_extractor.Reset();
@@ -207,18 +199,11 @@ void Process(IOBuffer::Block* block, size_t size) {
         block->input[1],
         ramp,
         size);
-
-    if (ramp_mode == RAMP_MODE_MOD) {
-      offset = 8192.0f + 2048.0f; //0.0f;
-      multiplier = kOffset[1] * kOffset[0];//8192.0f;
-    }
        
     must_reset_ramp_extractor = false;
   } else {
-    offset = kOffset[state.range];
-    multiplier = 1024.0f;
-    float root = (ramp_mode != RAMP_MODE_MOD || output_mode != OUTPUT_MODE_GATES) ? kRoot[state.range] : 1;
-    frequency = root * stmlib::SemitonesToRatio(transposition);
+    frequency = kRoot[state.range] * stmlib::SemitonesToRatio(transposition);
+
     if (half_speed) {
       frequency *= 2.0f;
     }
@@ -263,12 +248,16 @@ void Process(IOBuffer::Block* block, size_t size) {
       switch (output_mode) {
         case OUTPUT_MODE_GATES:
           {
+            float f_scaled = (block->parameters.frequency + 96.0f) / 192.0f;
+            float fm_scaled = (block->parameters.fm + 96.0f) / 192.0f;
+            int32_t offset = 21845 * static_cast<int32_t>(state.range);
+            int32_t freq = offset + static_cast<int32_t>((f_scaled + fm_scaled) * 21845.0f);
             poly_lfo.set_coupling(block->lfo_parameters.coupling_);
             poly_lfo.set_shape(block->lfo_parameters.shape_);
             poly_lfo.set_shape_spread(block->lfo_parameters.shape_spread_);
             poly_lfo.set_spread(block->lfo_parameters.spread_);
 
-            poly_lfo.Render(static_cast<int32_t>(offset + (frequency * multiplier) ));
+            poly_lfo.Render(freq);
 
             for (size_t i = 0; i < size; ++i) {
               for (size_t j = 0; j < kNumCvOutputs; ++j) {
@@ -276,6 +265,7 @@ void Process(IOBuffer::Block* block, size_t size) {
               }
             }
           }
+          
           break;
         case OUTPUT_MODE_AMPLITUDE:
           {
@@ -295,6 +285,22 @@ void Process(IOBuffer::Block* block, size_t size) {
           }
           break;
         case OUTPUT_MODE_SLOPE_PHASE:
+        {
+            poly_lfo2.set_shape(block->parameters.shape);
+            poly_lfo.set_shape_spread(block->parameters.slope);
+            poly_lfo.set_spread(block->parameters.smoothness);
+            poly_lfo.set_coupling(block->lfo_parameters.coupling_);
+
+            poly_lfo2.Render(frequency, out);
+
+            for (size_t i = 0; i < size; ++i) {
+              for (size_t j = 0; j < kNumCvOutputs; ++j) {
+                block->output[j][2 * i] = block->output[j][2 * i + 1] =
+                    settings.dac_code(j, out[0].channel[j] / 32.0f);
+              }
+            }
+          }
+          break;
         case OUTPUT_MODE_FREQUENCY:  
           { 
             wavetable_engine.Render(block->parameters, frequency, out, size);
@@ -343,6 +349,7 @@ void Init() {
   ratio_index_quantizer.Init(20, 0.05f, false);
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
   poly_lfo.Init();
+  poly_lfo2.Init();
   attractors.Init();
   wavetable_engine.Init();
   

@@ -33,7 +33,7 @@
 
 #include "stmlib/utils/dsp.h"
 
-#include "tides2/resources.h"
+//#include "tides2/resources.h"
 
 namespace tides {
 
