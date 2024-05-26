@@ -124,6 +124,7 @@ const uint8_t* const wavetable[] = {
   WAVE(13),
   WAVE(14),
   WAVE(15)
+  //WAVE(16)
 };
 #endif
 #ifndef LFO
@@ -158,7 +159,7 @@ class PolyLfo2 {
   void Init() {
     spread_ = 0.0f;
     shape_ = 0.0f;
-    shape_spread_ = 0;
+    shape_spread_ = 0.0f;
     coupling_ = 0.0f;
     lp_ = 0.0f;
     fill(&value_[0], &value_[kNumChannels], 0.0f);
@@ -236,10 +237,9 @@ class PolyLfo2 {
   ///////////////////////////////////////
 
   const float f0 = frequency;
-  const float cutoff = min(float(wavetable_size) * f0, 1.0f);
-  //const float scale = (1.0f / (f0 * 131072.0f));
-
-  float waveform = shape_ * float(num_waves - 1);
+  //const float cutoff = min(float(wavetable_size) * f0, 1.0f);
+  float max_index = float(num_waves - 1);
+  float waveform = shape_ * max_index;
     
   
   for (uint8_t i = 0; i < kNumChannels; ++i) {
@@ -247,7 +247,6 @@ class PolyLfo2 {
     if (phase_[i] >= 1.0f) {
       phase_[i] -= 1.0f;
     }
-    
     
     MAKE_INTEGRAL_FRACTIONAL(waveform);
     const float p = phase_[i] * float(wavetable_size);
@@ -258,31 +257,36 @@ class PolyLfo2 {
     const float x1 = InterpolateWave(
         wavetable[waveform_integral + 1], p_integral, p_fractional);
     
-    const float s = differentiator_.Process(
-        cutoff,
-        (x0 + (x1 - x0) * waveform_fractional));
+    const float s = (x0 + (x1 - x0) * waveform_fractional); //differentiator_.Process(
+    //    cutoff,
+    //    (x0 + (x1 - x0) * waveform_fractional));
     //ONE_POLE(lp_, s, cutoff);
-    //*out++ += amplitude_modulation.Next() * lp;
-    out[0].channel[i] = s;//(x0 + (x1 - x0) * waveform_fractional);//Crossfade(value_a, value_b, p_fractional);
+    out[0].channel[i] = s; //(x0 + (x1 - x0) * waveform_fractional);//Crossfade(value_a, value_b, p_fractional);
+    /*waveform += shape_spread_ * max_index;
+    if (waveform > max_index) {
+      waveform -= max_index;
+    } else if (waveform < 0) {
+      waveform += max_index;
+    }*/
   }
 }
 
   inline void set_shape(float shape) {
     shape_ = shape;
   }
-  inline void set_shape_spread(uint16_t shape_spread) {
-    shape_spread_ = static_cast<int16_t>(shape_spread - 32768) >> 1;
+  inline void set_shape_spread(float shape_spread) {
+    shape_spread_ = (shape_spread - 0.5f) / 2.0f; //static_cast<int16_t>(shape_spread - 32768) >> 1;
   }
-  inline void set_spread(uint16_t spread) {
-    spread_ = spread / 65535.0f;
+  inline void set_spread(float spread) {
+    spread_ = spread;
   }
-  inline void set_coupling(uint16_t coupling) {
+  inline void set_coupling(float coupling) {
     //int32_t x = coupling - 32768;
     //int32_t scaled = x * x >> 15;
     //scaled = x > 0 ? scaled : - scaled;
     //scaled = (x + 3 * scaled) >> 2;
     //coupling_ = (scaled >> 4) * 10;
-    coupling_ = (coupling / 65535.0f) - 0.5f;
+    coupling_ = coupling - 0.5f;
     
   }
   

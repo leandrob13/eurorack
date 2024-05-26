@@ -287,7 +287,7 @@ void Process(IOBuffer::Block* block, size_t size) {
         case OUTPUT_MODE_SLOPE_PHASE:
         {
             poly_lfo2.set_shape(block->parameters.shape);
-            poly_lfo.set_shape_spread(block->parameters.slope);
+            //poly_lfo.set_shape_spread(block->parameters.slope);
             poly_lfo.set_spread(block->parameters.smoothness);
             poly_lfo.set_coupling(block->lfo_parameters.coupling_);
 
