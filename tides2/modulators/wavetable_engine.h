@@ -208,6 +208,7 @@ class WavetableEngine {
   float phases_[2];
   float next_sample_;
   float next_sample_tri_;
+  float lp_;
 
   Differentiator diff_out_;
   Filter<4> fl;

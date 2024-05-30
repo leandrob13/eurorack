@@ -90,6 +90,7 @@ class PolySlopeGenerator {
   
   struct OutputSample {
     float channel[num_channels];
+    uint32_t int_channel[num_channels];
   };
   
   void Reset() {

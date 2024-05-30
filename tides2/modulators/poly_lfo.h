@@ -44,6 +44,7 @@ using namespace std;
 
 const uint8_t kNumChannels = 4;
 const uint8_t num_waves = 17;
+const uint16_t wavetable_size = 257;
 
 class PolyLfo {
  public:
@@ -123,7 +124,31 @@ inline float InterpolateWaveHermite(
   return (((a * f) - b_neg) * f + c) * f + x0;
 }
 
-const uint16_t wavetable_size = 257;
+inline float InterpolateWaveCubic(const uint8_t* table, int32_t index_integral, float index_fractional) {
+
+    // Calculate indices for the points involved in the interpolation
+    int xm1 = (index_integral - 1 + wavetable_size) % wavetable_size;
+    int xp1 = (index_integral + 1) % wavetable_size;
+    int xp2 = (index_integral + 2) % wavetable_size;
+
+    // Since x is used directly as an index, ensure it is within the bounds of the array
+    index_integral = index_integral % wavetable_size;
+
+    // Retrieve the values from the table for the points involved in the interpolation
+    const float ym1 = table[xm1];
+    const float y0 = table[index_integral];
+    const float y1 = table[xp1];
+    const float y2 = table[xp2];
+
+    // Perform the cubic interpolation
+    const float c0 = y0;
+    const float c1 = 0.5f * (y1 - ym1);
+    const float c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
+    const float c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
+
+    // Calculate the interpolated value
+    return ((c3 * index_fractional + c2) * index_fractional + c1) * index_fractional + c0;
+}
 
 #define WAVE(wave) &wt_lfo_waveforms[wave * 257]
 
@@ -158,6 +183,8 @@ class PolyLfo2 {
     shape_spread_ = 0.0f;
     coupling_ = 0.0f;
     lp_ = 0.0f;
+    frequency_ = 0.0f;
+    waveform_ = 0.0f;
     
     fill(&value_[0], &value_[kNumChannels], 0.0f);
     for (int i = 0; i < kNumChannels; i++) {
@@ -227,6 +254,85 @@ class PolyLfo2 {
   }
 }
 
+  void Render2(float frequency, PolySlopeGenerator::OutputSample* out, size_t size) {
+      
+    // Advance phasors.
+      if (spread_ > 0.5f) {
+        float phase_difference = (spread_ - 0.5f);
+        for (size_t i = 0; i < kNumChannels; i++) {
+          phase_[i] = i == 0 ? phase_[i] + frequency : phase_[i - 1] + phase_difference;
+          if (phase_[i] >= 1.0f) {
+            phase_[i] -= 1.0f;
+          }
+        }
+      } else {
+        float spread = 2.0f * (1.0f - spread_);
+        float f0 = frequency;
+        for (uint8_t i = 0; i < kNumChannels; ++i) {
+          phase_[i] += f0;
+          if (phase_[i] >= 1.0f) {
+            phase_[i] -= 1.0f;
+          }
+          f0 *= spread;
+        }
+      }
+
+    float max_index = float(num_waves - 1);
+    float waveform = shape_ * max_index;
+    const uint8_t* sine = &wt_lfo_waveforms[17 * 257];  
+
+    stmlib::ParameterInterpolator waveform_modulation(
+        &waveform_,
+        waveform,
+        size);
+
+    stmlib::ParameterInterpolator f0_modulation(
+        &frequency_,
+        frequency,
+        size);
+    
+    for (size_t index = 0; index < size; index++) {
+      float waveform2 = waveform_modulation.Next();
+      float f0 = f0_modulation.Next();
+
+      const float cutoff = min(float(wavetable_size) * f0, 1.0f);  
+
+      for (uint8_t i = 0; i < kNumChannels; ++i) {
+        float phase = phase_[i];
+
+        if (coupling_ > 0.0f) {
+          phase += value_[(i + 1) % kNumChannels] * coupling_;
+        } else {
+          phase += value_[(i + kNumChannels - 1) % kNumChannels] * -coupling_;
+        }
+        if (phase >= 1.0f) {
+          phase -= 1.0f;
+        }
+
+        MAKE_INTEGRAL_FRACTIONAL(waveform2);
+        
+        const float p = phase * float(wavetable_size);
+        MAKE_INTEGRAL_FRACTIONAL(p);
+        
+        const float x0 = InterpolateWaveCubic(wavetable[waveform2_integral], p_integral, p_fractional);
+        const float x1 = InterpolateWaveCubic(wavetable[(waveform2_integral + 1)], p_integral, p_fractional);
+        
+        float s = (x0 + (x1 - x0) * waveform2_fractional);
+        ONE_POLE(lp_, s, cutoff);
+
+        value_[i] = InterpolateWave(sine, p_integral, p_fractional) / 512.0f;
+        out[index].channel[i] = lp_; 
+
+        waveform2 += shape_spread_ * max_index;
+        if (waveform2 > max_index) {
+          waveform2 -= max_index;
+        } else if (waveform2 < 0) {
+          waveform2 += max_index;
+        }
+      }
+    }
+  }
+
   inline void set_shape(float shape) {
     shape_ = shape;
   }
@@ -248,6 +354,9 @@ class PolyLfo2 {
   float shape_spread_;
   float spread_;
   float coupling_;
+
+  float frequency_;
+  float waveform_;
 
   float lp_;
 

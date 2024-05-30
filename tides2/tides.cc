@@ -151,6 +151,7 @@ void Process(IOBuffer::Block* block, size_t size) {
   const Range range = state.range < 2 ? RANGE_CONTROL : RANGE_AUDIO;
   const bool half_speed = output_mode >= OUTPUT_MODE_SLOPE_PHASE;
   float transposition = block->parameters.frequency + block->parameters.fm;
+  
   CONSTRAIN(transposition, -128.0f, 127.0f);
   
   if (test_adc_noise) {
@@ -285,30 +286,30 @@ void Process(IOBuffer::Block* block, size_t size) {
           }
           break;
         case OUTPUT_MODE_SLOPE_PHASE:
-        {
+          {
             poly_lfo2.set_shape(block->parameters.shape);
             poly_lfo2.set_shape_spread(block->parameters.slope);
             poly_lfo2.set_spread(block->parameters.smoothness);
             poly_lfo2.set_coupling(block->parameters.shift);
 
-            poly_lfo2.Render(frequency, out);
+            poly_lfo2.Render2(frequency, out, size);
 
             for (size_t i = 0; i < size; ++i) {
               for (size_t j = 0; j < kNumCvOutputs; ++j) {
                 block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                    settings.dac_code(j, out[0].channel[j] / 32.0f);
+                    settings.dac_code(j, out[i].channel[j] / 32.0f);
               }
             }
           }
           break;
         case OUTPUT_MODE_FREQUENCY:  
           { 
-            wavetable_engine.Render(block->parameters, frequency, out, size);
+            wavetable_engine.Render(block->parameters, frequency, out, 1);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       
                 block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                    settings.dac_code(j, out[i].channel[j]);
+                    settings.dac_code(j, out[0].channel[j]);
               }
             }
           }
