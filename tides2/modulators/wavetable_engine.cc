@@ -39,9 +39,6 @@ using namespace std;
 using namespace stmlib;
 
 void WavetableEngine::Init() {
-  x_lp_ = 0.0f;
-  y_lp_ = 0.0f;
-  z_lp_ = 0.0f;
   
   x_pre_lp_ = 0.0f;
   y_pre_lp_ = 0.0f;
@@ -67,32 +64,6 @@ inline float Clamp(float x, float amount) {
   CONSTRAIN(x, -0.5f, 0.5f);
   x += 0.5f;
   return x;
-}
-
-inline float InterpolateWaveCubic(const int16_t* table, int32_t index_integral, float index_fractional) {
-    int size = table_size + 4;
-    // Calculate indices for the points involved in the interpolation
-    int xm1 = (index_integral - 1 + size) % size;
-    int xp1 = (index_integral + 1) % size;
-    int xp2 = (index_integral + 2) % size;
-
-    // Since x is used directly as an index, ensure it is within the bounds of the array
-    index_integral = index_integral % size;
-
-    // Retrieve the values from the table for the points involved in the interpolation
-    float ym1 = table[xm1];
-    float y0 = table[index_integral];
-    float y1 = table[xp1];
-    float y2 = table[xp2];
-
-    // Perform the cubic interpolation
-    float c0 = y0;
-    float c1 = 0.5f * (y1 - ym1);
-    float c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
-    float c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
-
-    // Calculate the interpolated value
-    return ((c3 * index_fractional + c2) * index_fractional + c1) * index_fractional + c0;
 }
 
 inline float ReadWave(
@@ -124,7 +95,6 @@ void WavetableEngine::Render(
   const float z = z_pre_lp_;
   
   const float quantization = min(max(z - 3.0f, 0.0f), 1.0f);
-  //const float lp_coefficient = min(max(2.0f * f0 * (4.0f - 3.0f * quantization), 0.01f), 0.1f);
   
   MAKE_INTEGRAL_FRACTIONAL(x);
   MAKE_INTEGRAL_FRACTIONAL(y);
@@ -151,14 +121,6 @@ void WavetableEngine::Render(
     
     const float gain = (1.0f / (f0 * 131072.0f)) * (0.95f - f0);
     const float cutoff = min(table_size_f * f0, 1.0f);
-    
-    /*ONE_POLE(x_lp_, x_modulation.Next(), lp_coefficient);
-    ONE_POLE(y_lp_, y_modulation.Next(), lp_coefficient);
-    ONE_POLE(z_lp_, z_modulation.Next(), lp_coefficient);
-    
-    const float x = x_lp_;
-    const float y = y_lp_;
-    const float z = z_lp_;*/
 
     const float x = x_modulation.Next();
     const float y = y_modulation.Next();

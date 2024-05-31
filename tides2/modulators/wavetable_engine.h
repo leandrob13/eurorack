@@ -196,10 +196,6 @@ class WavetableEngine {
   float x_pre_lp_;
   float y_pre_lp_;
   float z_pre_lp_;
-  
-  float x_lp_;
-  float y_lp_;
-  float z_lp_;
 
   float previous_x_;
   float previous_y_;
@@ -234,16 +230,6 @@ inline float InterpolateWaveHermite(
   const float b_neg = w + a;
   const float f = index_fractional;
   return (((a * f) - b_neg) * f + c) * f + x0;
-}
-
-inline float InterpolateWave(
-    const int16_t* table,
-    int32_t index_integral,
-    float index_fractional) {
-  float a = static_cast<float>(table[index_integral]);
-  float b = static_cast<float>(table[index_integral + 1]);
-  float t = index_fractional;
-  return a + (b - a) * t;
 }
 
 }  // namespace plaits

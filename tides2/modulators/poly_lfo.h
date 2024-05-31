@@ -37,7 +37,6 @@
 #include "tides2/modulators/wavetable_engine.h"
 
 
-
 namespace tides {
 using namespace stmlib;
 using namespace std;
@@ -45,33 +44,6 @@ using namespace std;
 const uint8_t kNumChannels = 4;
 const uint8_t num_waves = 17;
 const uint16_t wavetable_size = 257;
-
-inline float InterpolateWave(
-    const uint8_t* table,
-    int32_t index_integral,
-    float index_fractional) {
-  float a = static_cast<float>(table[index_integral]);
-  float b = static_cast<float>(table[index_integral + 1]);
-  float t = index_fractional;
-  return a + (b - a) * t;
-}
-
-inline float InterpolateWaveHermite(
-    const uint8_t* table,
-    int32_t index_integral,
-    float index_fractional) {
-  const float xm1 = table[index_integral];
-  const float x0 = table[index_integral + 1];
-  const float x1 = table[index_integral + 2];
-  const float x2 = table[index_integral + 3];
-  const float c = (x1 - xm1) * 0.5f;
-  const float v = x0 - x1;
-  const float w = c + v;
-  const float a = w + v + (x2 - x0) * 0.5f;
-  const float b_neg = w + a;
-  const float f = index_fractional;
-  return (((a * f) - b_neg) * f + c) * f + x0;
-}
 
 inline float InterpolateWaveCubic(const uint8_t* table, int32_t index_integral, float index_fractional) {
 
@@ -187,7 +159,7 @@ class PolyLfo {
         
         float s = (x0 + (x1 - x0) * wave_fractional);
 
-        value_[i] = InterpolateWave(sine, p_integral, p_fractional) / 512.0f;
+        value_[i] = InterpolateWaveCubic(sine, p_integral, p_fractional) / 512.0f;
         out[index].channel[i] = s; 
 
         wave += shape_spread_ * max_index;
