@@ -62,7 +62,6 @@ HysteresisQuantizer2 ratio_index_quantizer;
 IOBuffer io_buffer;
 PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
-PolyLfo2 poly_lfo2;
 PolyLfo poly_lfo;
 Attractors attractors;
 WavetableEngine wavetable_engine;
@@ -248,26 +247,6 @@ void Process(IOBuffer::Block* block, size_t size) {
   } else {
       switch (output_mode) {
         case OUTPUT_MODE_GATES:
-          {
-            float f_scaled = (block->parameters.frequency + 96.0f) / 192.0f;
-            float fm_scaled = (block->parameters.fm + 96.0f) / 192.0f;
-            int32_t offset = 21845 * static_cast<int32_t>(state.range);
-            int32_t freq = offset + static_cast<int32_t>((f_scaled + fm_scaled) * 21845.0f);
-            poly_lfo.set_coupling(block->lfo_parameters.coupling_);
-            poly_lfo.set_shape(block->lfo_parameters.shape_);
-            poly_lfo.set_shape_spread(block->lfo_parameters.shape_spread_);
-            poly_lfo.set_spread(block->lfo_parameters.spread_);
-
-            poly_lfo.Render(freq);
-
-            for (size_t i = 0; i < size; ++i) {
-              for (size_t j = 0; j < kNumCvOutputs; ++j) {
-                block->output[j][i] = settings.dac_code(j, static_cast<float>(poly_lfo.dac_code(j)) / 8192.0f);
-              }
-            }
-          }
-          
-          break;
         case OUTPUT_MODE_AMPLITUDE:
           {
             attractors.set_gain(block->parameters.shape);
@@ -287,12 +266,12 @@ void Process(IOBuffer::Block* block, size_t size) {
           break;
         case OUTPUT_MODE_SLOPE_PHASE:
           {
-            poly_lfo2.set_shape(block->parameters.shape);
-            poly_lfo2.set_shape_spread(block->parameters.slope);
-            poly_lfo2.set_spread(block->parameters.smoothness);
-            poly_lfo2.set_coupling(block->parameters.shift);
+            poly_lfo.set_shape(block->parameters.shape);
+            poly_lfo.set_shape_spread(block->parameters.slope);
+            poly_lfo.set_spread(block->parameters.smoothness);
+            poly_lfo.set_coupling(block->parameters.shift);
 
-            poly_lfo2.Render2(frequency, out, size);
+            poly_lfo.Render(frequency, out, size);
 
             for (size_t i = 0; i < size; ++i) {
               for (size_t j = 0; j < kNumCvOutputs; ++j) {
@@ -350,7 +329,6 @@ void Init() {
   ratio_index_quantizer.Init(20, 0.05f, false);
   ramp_extractor.Init(kSampleRate, 40.0f / kSampleRate);
   poly_lfo.Init();
-  poly_lfo2.Init();
   attractors.Init();
   wavetable_engine.Init();
   

@@ -46,57 +46,6 @@ const uint8_t kNumChannels = 4;
 const uint8_t num_waves = 17;
 const uint16_t wavetable_size = 257;
 
-class PolyLfo {
- public:
-  PolyLfo() { }
-  ~PolyLfo() { }
-  
-  void Init();
-  void Render(int32_t frequency);
-
-  inline void set_shape(uint16_t shape) {
-    shape_ = shape;
-  }
-  inline void set_shape_spread(uint16_t shape_spread) {
-    shape_spread_ = static_cast<int16_t>(shape_spread - 32768) >> 1;
-  }
-  inline void set_spread(uint16_t spread) {
-    if (spread < 32768) {
-      int32_t x = spread - 32768;
-      int32_t scaled = -(x * x >> 15);
-      spread_ = (x + 3 * scaled) >> 2;
-    } else {
-      spread_ = spread - 32768;
-    }
-  }
-  inline void set_coupling(uint16_t coupling) {
-    int32_t x = coupling - 32768;
-    int32_t scaled = x * x >> 15;
-    scaled = x > 0 ? scaled : - scaled;
-    scaled = (x + 3 * scaled) >> 2;
-    coupling_ = (scaled >> 4) * 10;
-    
-  }
-  
-  inline uint16_t dac_code(uint8_t index) const {
-    return dac_code_[index];
-  }
-  static uint32_t FrequencyToPhaseIncrement(int32_t frequency);
-
- private:
-
-  uint16_t shape_;
-  int16_t shape_spread_;
-  int32_t spread_;
-  int16_t coupling_;
-
-  int16_t value_[kNumChannels];
-  uint32_t phase_[kNumChannels];
-  uint16_t dac_code_[kNumChannels];
-
-  DISALLOW_COPY_AND_ASSIGN(PolyLfo);
-};
-
 inline float InterpolateWave(
     const uint8_t* table,
     int32_t index_integral,
@@ -172,10 +121,10 @@ const uint8_t* const wavetable[] = {
   WAVE(16)
 };
 
-class PolyLfo2 {
+class PolyLfo {
  public:
-  PolyLfo2() { }
-  ~PolyLfo2() { }
+  PolyLfo() { }
+  ~PolyLfo() { }
   
   void Init() {
     spread_ = 0.0f;
@@ -192,114 +141,35 @@ class PolyLfo2 {
     }
   }
 
-  void Render(float frequency, PolySlopeGenerator::OutputSample* out) {
-
-    const float cutoff = min(float(wavetable_size) * frequency, 1.0f);  
-  // Advance phasors.
-    if (spread_ > 0.5f) {
-      float phase_difference = (spread_ - 0.5f);
-      for (size_t i = 0; i < kNumChannels; i++) {
-        phase_[i] = i == 0 ? phase_[i] + frequency : phase_[i - 1] + phase_difference;
-        if (phase_[i] >= 1.0f) {
-          phase_[i] -= 1.0f;
-        }
-      }
-    } else {
-      float spread = 2.0f * (1.0f - spread_);
-      for (uint8_t i = 0; i < kNumChannels; ++i) {
-        phase_[i] += frequency;
-        if (phase_[i] >= 1.0f) {
-          phase_[i] -= 1.0f;
-        }
-        frequency *= spread;
-      }
-    }
-
-  float max_index = float(num_waves - 1);
-  float waveform = shape_ * max_index;
-  const uint8_t* sine = &wt_lfo_waveforms[17 * 257];  
-  
-  for (uint8_t i = 0; i < kNumChannels; ++i) {
-    float phase = phase_[i];
-
-    if (coupling_ > 0.0f) {
-      phase += value_[(i + 1) % kNumChannels] * coupling_;
-    } else {
-      phase += value_[(i + kNumChannels - 1) % kNumChannels] * -coupling_;
-    }
-    if (phase >= 1.0f) {
-      phase -= 1.0f;
-    }
-
-    MAKE_INTEGRAL_FRACTIONAL(waveform);
-    
-    const float p = phase * float(wavetable_size);
-    MAKE_INTEGRAL_FRACTIONAL(p);
-    // check looping with % operator
-    const float x0 = InterpolateWave(wavetable[waveform_integral], p_integral, p_fractional);
-    const float x1 = InterpolateWave(wavetable[(waveform_integral + 1)], p_integral, p_fractional);
-    
-    const float s = (x0 + (x1 - x0) * waveform_fractional);
-    ONE_POLE(lp_, s, cutoff);
-
-    value_[i] = InterpolateWave(sine, p_integral, p_fractional) / 512.0f;
-    out[0].channel[i] = lp_; 
-
-    waveform += shape_spread_ * max_index;
-    if (waveform > max_index) {
-      waveform -= max_index;
-    } else if (waveform < 0) {
-      waveform += max_index;
-    }
-  }
-}
-
-  void Render2(float frequency, PolySlopeGenerator::OutputSample* out, size_t size) {
-      
-    // Advance phasors.
-      if (spread_ > 0.5f) {
-        float phase_difference = (spread_ - 0.5f);
-        for (size_t i = 0; i < kNumChannels; i++) {
-          phase_[i] = i == 0 ? phase_[i] + frequency : phase_[i - 1] + phase_difference;
-          if (phase_[i] >= 1.0f) {
-            phase_[i] -= 1.0f;
-          }
-        }
-      } else {
-        float spread = 2.0f * (1.0f - spread_);
-        float f0 = frequency;
-        for (uint8_t i = 0; i < kNumChannels; ++i) {
-          phase_[i] += f0;
-          if (phase_[i] >= 1.0f) {
-            phase_[i] -= 1.0f;
-          }
-          f0 *= spread;
-        }
-      }
-
+  void Render(float frequency, PolySlopeGenerator::OutputSample* out, size_t size) {
     float max_index = float(num_waves - 1);
     float waveform = shape_ * max_index;
     const uint8_t* sine = &wt_lfo_waveforms[17 * 257];  
 
-    stmlib::ParameterInterpolator waveform_modulation(
-        &waveform_,
-        waveform,
-        size);
-
-    stmlib::ParameterInterpolator f0_modulation(
-        &frequency_,
-        frequency,
-        size);
-    
+    stmlib::ParameterInterpolator waveform_modulation(&waveform_, waveform, size);
+    stmlib::ParameterInterpolator f0_modulation(&frequency_, frequency, size);
+ 
     for (size_t index = 0; index < size; index++) {
-      float waveform2 = waveform_modulation.Next();
+      float wave = waveform_modulation.Next();
       float f0 = f0_modulation.Next();
 
-      const float cutoff = min(float(wavetable_size) * f0, 1.0f);  
-
       for (uint8_t i = 0; i < kNumChannels; ++i) {
-        float phase = phase_[i];
+        MAKE_INTEGRAL_FRACTIONAL(wave);
+        
+        if (spread_ > 0.5f) {
+          float phase_difference = (spread_ - 0.5f);
+          phase_[i] = i == 0 ? phase_[i] + f0 : phase_[i - 1] + phase_difference;
+        } else {
+          float spread = 2.0f * (1.0f - spread_);
+          phase_[i] += f0;
+          f0 *= spread;
+        }
 
+        if (phase_[i] >= 1.0f) {
+          phase_[i] -= 1.0f;
+        }
+
+        float phase = phase_[i];
         if (coupling_ > 0.0f) {
           phase += value_[(i + 1) % kNumChannels] * coupling_;
         } else {
@@ -308,26 +178,23 @@ class PolyLfo2 {
         if (phase >= 1.0f) {
           phase -= 1.0f;
         }
-
-        MAKE_INTEGRAL_FRACTIONAL(waveform2);
         
         const float p = phase * float(wavetable_size);
         MAKE_INTEGRAL_FRACTIONAL(p);
         
-        const float x0 = InterpolateWaveCubic(wavetable[waveform2_integral], p_integral, p_fractional);
-        const float x1 = InterpolateWaveCubic(wavetable[(waveform2_integral + 1)], p_integral, p_fractional);
+        const float x0 = InterpolateWaveCubic(wavetable[wave_integral], p_integral, p_fractional);
+        const float x1 = InterpolateWaveCubic(wavetable[(wave_integral + 1)], p_integral, p_fractional);
         
-        float s = (x0 + (x1 - x0) * waveform2_fractional);
-        ONE_POLE(lp_, s, cutoff);
+        float s = (x0 + (x1 - x0) * wave_fractional);
 
         value_[i] = InterpolateWave(sine, p_integral, p_fractional) / 512.0f;
-        out[index].channel[i] = lp_; 
+        out[index].channel[i] = s; 
 
-        waveform2 += shape_spread_ * max_index;
-        if (waveform2 > max_index) {
-          waveform2 -= max_index;
-        } else if (waveform2 < 0) {
-          waveform2 += max_index;
+        wave += shape_spread_ * max_index;
+        if (wave > max_index) {
+          wave -= max_index;
+        } else if (wave < 0) {
+          wave += max_index;
         }
       }
     }
@@ -363,7 +230,7 @@ class PolyLfo2 {
   float value_[kNumChannels];
   float phase_[kNumChannels];
 
-  DISALLOW_COPY_AND_ASSIGN(PolyLfo2);
+  DISALLOW_COPY_AND_ASSIGN(PolyLfo);
 };
 
 }  // namespace tides

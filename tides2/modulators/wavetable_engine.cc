@@ -69,7 +69,7 @@ inline float Clamp(float x, float amount) {
   return x;
 }
 
-inline float InterpolateWaveCubic(const uint8_t* table, int32_t index_integral, float index_fractional) {
+inline float InterpolateWaveCubic(const int16_t* table, int32_t index_integral, float index_fractional) {
     int size = table_size + 4;
     // Calculate indices for the points involved in the interpolation
     int xm1 = (index_integral - 1 + size) % size;
@@ -103,7 +103,7 @@ inline float ReadWave(
   int phase_integral,
   float phase_fractional) {
   int wave = ((x + y * 8 + z * 64) * randomize) % 192;
-  return InterpolateWaveHermite(
+  return InterpolateWave(
       wav_integrated_waves + wave * (table_size + 4),
       phase_integral,
       phase_fractional);
