@@ -57,8 +57,8 @@ void WavetableEngine::Init() {
   phases_[1] = 0.0f;
   next_sample_tri_ = 0.0f;
   diff_out_.Init();
-  fl.Init();
-  lp_ = 0.0f;
+  fill(&lp_1_[0], &lp_1_[4], 0.0f);
+  fill(&lp_2_[0], &lp_2_[4], 0.0f);
 }
 
 inline float Clamp(float x, float amount) {
@@ -103,7 +103,7 @@ inline float ReadWave(
   int phase_integral,
   float phase_fractional) {
   int wave = ((x + y * 8 + z * 64) * randomize) % 192;
-  return InterpolateWave(
+  return InterpolateWaveHermite(
       wav_integrated_waves + wave * (table_size + 4),
       phase_integral,
       phase_fractional);
@@ -124,8 +124,7 @@ void WavetableEngine::Render(
   const float z = z_pre_lp_;
   
   const float quantization = min(max(z - 3.0f, 0.0f), 1.0f);
-  const float lp_coefficient = min(
-      max(2.0f * f0 * (4.0f - 3.0f * quantization), 0.01f), 0.1f);
+  //const float lp_coefficient = min(max(2.0f * f0 * (4.0f - 3.0f * quantization), 0.01f), 0.1f);
   
   MAKE_INTEGRAL_FRACTIONAL(x);
   MAKE_INTEGRAL_FRACTIONAL(y);
@@ -153,13 +152,17 @@ void WavetableEngine::Render(
     const float gain = (1.0f / (f0 * 131072.0f)) * (0.95f - f0);
     const float cutoff = min(table_size_f * f0, 1.0f);
     
-    ONE_POLE(x_lp_, x_modulation.Next(), lp_coefficient);
+    /*ONE_POLE(x_lp_, x_modulation.Next(), lp_coefficient);
     ONE_POLE(y_lp_, y_modulation.Next(), lp_coefficient);
     ONE_POLE(z_lp_, z_modulation.Next(), lp_coefficient);
     
     const float x = x_lp_;
     const float y = y_lp_;
-    const float z = z_lp_;
+    const float z = z_lp_;*/
+
+    const float x = x_modulation.Next();
+    const float y = y_modulation.Next();
+    const float z = z_modulation.Next();
 
     MAKE_INTEGRAL_FRACTIONAL(x);
     MAKE_INTEGRAL_FRACTIONAL(y);
@@ -214,9 +217,7 @@ void WavetableEngine::Render(
 
     float mix = xyz0 + (xyz1 - xyz0) * z_fractional;
     mix = diff_out_.Process(cutoff, mix) * gain;
-    ONE_POLE(lp_, mix, cutoff);
     float fold_amount = fold_modulation.Next();
-    mix = lp_;
 
     out[index].channel[0] = fold(mix, fold_amount, true);
     out[index].channel[1] = fold(mix, fold_amount * 0.65f, false);

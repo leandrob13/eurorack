@@ -283,12 +283,12 @@ void Process(IOBuffer::Block* block, size_t size) {
           break;
         case OUTPUT_MODE_FREQUENCY:  
           { 
-            wavetable_engine.Render(block->parameters, frequency, out, 1);
+            wavetable_engine.Render(block->parameters, frequency, out, size);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       
                 block->output[j][2 * i] = block->output[j][2 * i + 1] =
-                    settings.dac_code(j, out[0].channel[j]);
+                    settings.dac_code(j, out[i].channel[j]);
               }
             }
           }

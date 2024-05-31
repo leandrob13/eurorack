@@ -105,15 +105,17 @@ class WavetableEngine {
   inline void filter(float frequency, float smoothness, PolySlopeGenerator::OutputSample* out, size_t size) {
     if (smoothness < 0.5f) {
       float ratio = smoothness * 2.0f;
-      ratio *= ratio;
-      ratio *= ratio;
-      
-      float f[4];
-      for (size_t i = 0; i < 4; ++i) {
-        f[i] = frequency * 0.5f;
-        f[i] += (1.0f - f[i]) * ratio;
+      ratio *= ratio * ratio;
+
+      for (size_t s = 0; s < size; s++) {
+        for (size_t i = 0; i < 4; ++i) {
+          float f = frequency * 0.5f;
+          f += (1.0f - f) * ratio;// f = frequency * 0.5f * (1- ratio) + ratio
+          ONE_POLE(lp_1_[i], out[s].channel[i], f);
+          ONE_POLE(lp_2_[i], lp_1_[i], f);
+          out[s].channel[i] = lp_2_[i];
+        }
       }
-      fl.Process<4>(f, &out[0].channel[0], size);
     }
   }
 
@@ -208,10 +210,11 @@ class WavetableEngine {
   float phases_[2];
   float next_sample_;
   float next_sample_tri_;
-  float lp_;
+
+  float lp_1_[4];
+  float lp_2_[4];
 
   Differentiator diff_out_;
-  Filter<4> fl;
   
   DISALLOW_COPY_AND_ASSIGN(WavetableEngine);
 };
