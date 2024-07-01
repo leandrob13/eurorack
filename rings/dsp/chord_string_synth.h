@@ -30,7 +30,6 @@
 #define RINGS_DSP_STRING_SYNTH_PART_H_
 
 #include "stmlib/stmlib.h"
-#include "stmlib/dsp/delay_line.h"
 #include "stmlib/dsp/filter.h"
 #include "rings/dsp/dsp.h"
 #include "rings/dsp/fx/chorus.h"

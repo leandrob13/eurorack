@@ -62,10 +62,10 @@ class Delay {
       engine_.Start(&c);
      
       c.Load(0.0f);
-      c.ReadHermite(line_l, 32768.0f * delay_time_, 1.0f);
+      c.ReadHermite(line_l, 32768.0f * delay_time_, 0.5f);
       c.Write(del_out);
-      c.Read(*left, 0.5f);
-      c.Read(*right, 0.5f);
+      c.Read(*left, 0.25f);
+      c.Read(*right, 0.25f);
       c.Write(mix_l);
 
       c.Load((del_out * feedback_ * 0.85f));

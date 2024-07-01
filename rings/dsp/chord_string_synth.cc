@@ -136,11 +136,10 @@ void ChordStringSynth::Process(
   
   int16_t chord = synth.chord % 12;
   int cn = synth.arp.note();
-  int bank = 1;
   for (int32_t i = 0; i < chord_size; ++i) {
     int index = clocked ? cn : i;
-    float n = genre_chords[bank - 1][synth.genre][chord][index];
-    float oct_down = (bank == 1 && synth.genre < 3) ? 12.0f : 24.0f; 
+    float n = genre_chords[0][synth.genre][chord][index];
+    float oct_down = (synth.genre < 3) ? 12.0f : 24.0f; 
     notes[i].note = n - oct_down * (1 - synth.arp.octave());
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
@@ -191,9 +190,11 @@ void ChordStringSynth::Process(
   switch (fx_type_) {
     case DELAY:
     case DELAY_2:
-      delay_.set_delay_time(synth.delay_time);
-      delay_.set_feedback(synth.feedback);
-      delay_.Process(out, aux, size);
+      {
+        delay_.set_delay_time(synth.delay_time);
+        delay_.set_feedback(synth.feedback);
+        if (synth.delay_time > 0.1f) delay_.Process(out, aux, size);
+      }
       break;
 
     case CHORUS:
