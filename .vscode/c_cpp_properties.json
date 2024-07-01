@@ -9,7 +9,8 @@
             "macFrameworkPath": [
                 "/Users/leandrob13/Projects/audio/eurorack/gcc-arm-none-eabi-4_8-2013q4/arm-none-eabi"
             ],
-            "configurationProvider": "ms-vscode.makefile-tools"
+            "configurationProvider": "ms-vscode.makefile-tools",
+            "compilerPath": "/Users/leandrob13/Projects/audio/eurorack/gcc-arm-none-eabi-4_8-2013q4/bin/arm-none-eabi-g++"
         }
     ],
     "version": 4
