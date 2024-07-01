@@ -150,8 +150,10 @@ void Process(IOBuffer::Block* block, size_t size) {
   const Range range = state.range < 2 ? RANGE_CONTROL : RANGE_AUDIO;
   const bool half_speed = output_mode >= OUTPUT_MODE_SLOPE_PHASE;
   float transposition = block->parameters.frequency + block->parameters.fm;
+  float alt_transposition = block->parameters.alt_frequency;
   
   CONSTRAIN(transposition, -128.0f, 127.0f);
+  CONSTRAIN(alt_transposition, -128.0f, 127.0f);
   
   if (test_adc_noise) {
     static float note_lp = 0.0f;
@@ -249,13 +251,23 @@ void Process(IOBuffer::Block* block, size_t size) {
         case OUTPUT_MODE_GATES:
         case OUTPUT_MODE_AMPLITUDE:
           {
-            attractors.set_gain(block->parameters.shape);
-            attractors.set_rossler(block->parameters.slope);
-            attractors.set_thomas(block->parameters.smoothness);
-            attractors.set_chua(block->parameters.shift);
+            float g1_frequency = kRoot[state.range] * stmlib::SemitonesToRatio(transposition);
+            float g2_frequency = kRoot[state.range] * stmlib::SemitonesToRatio(alt_transposition);
+            bool g1_reset = block->input_patched[0] && (block->input[0][0] & stmlib::GATE_FLAG_HIGH);
+            bool g2_reset = block->input_patched[1] && (block->input[1][0] & stmlib::GATE_FLAG_HIGH);
+            attractors.Reset(g1_reset, g2_reset);
+            if (output_mode == OUTPUT_MODE_GATES) {
+              attractors.set_lorenz(block->parameters.slope);
+              attractors.set_rossler(block->parameters.smoothness);
+            } else {
+              attractors.set_thomas(block->parameters.slope);
+              attractors.set_chua(block->parameters.smoothness);
+            }
+            
+            attractors.set_gain(block->parameters.shift);
             attractors.set_speed(state.range);
 
-            attractors.Process(frequency);
+            attractors.Process(g1_frequency, g2_frequency, static_cast<int>(output_mode));
 
             for (size_t i = 0; i < size; ++i) {
               for (size_t j = 0; j < kNumCvOutputs; ++j) {

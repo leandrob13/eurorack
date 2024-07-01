@@ -52,6 +52,7 @@ struct Parameters {
   float slope;
   float smoothness;
   float shift;
+  float alt_frequency;
 };
 
 class IOBuffer {

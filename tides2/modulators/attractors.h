@@ -23,26 +23,34 @@ enum Speed {
   FAST
 };
 
+typedef struct Coordinates {
+  float x;
+  float y;
+  float z;
+
+  void Init() {
+    x = Random::GetFloat();
+    y = Random::GetFloat();
+    z = Random::GetFloat();
+  }
+} Coordinates;
+
 class Attractors {
   public:
 
   void Init() {
-    tx_ = Random::GetFloat();
-    ty_ = Random::GetFloat();
-    tz_ = Random::GetFloat();
-
-    rx_ = Random::GetFloat();
-    ry_ = Random::GetFloat();
-    rz_ = Random::GetFloat();
-
-    lx_ = Random::GetFloat();
-    ly_ = Random::GetFloat();
-    lz_ = Random::GetFloat();
-
-    cx_ = Random::GetFloat();
-    cy_ = Random::GetFloat();
-    cz_ = Random::GetFloat();
+    t_coordinates_.Init();
+    r_coordinates_.Init();
+    l_coordinates_.Init();
+    c_coordinates_.Init();
+    g1_reset_ = false;
+    g2_reset_ = false;
   }  
+
+  void Reset(bool g1_reset, bool g2_reset) {
+    g1_reset_ = g1_reset;
+    g2_reset_ = g2_reset;
+  }
 
   void set_thomas(float thomas) {
     thomas_ = thomas;
@@ -52,12 +60,16 @@ class Attractors {
     chua_ = chua;
   }
 
-  void set_gain(float gain) {
-    gain_ = gain;
+  void set_lorenz(float lorenz) {
+    lorenz_ = lorenz;
   }
 
   void set_rossler(float rossler) {
     rossler_ = rossler;
+  }
+
+  void set_gain(float gain) {
+    gain_ = gain;
   }
 
   void set_speed(int speed) {
@@ -68,15 +80,43 @@ class Attractors {
     return channels_[index];
   }
 
-  void Process(float frequency) {
-    channels_[0] = ProcessLorenzAttractor(frequency);
-    channels_[1] = ProcessRosslerAttractor(frequency);
-    channels_[2] = ProcessThomasSymmetricAttractor(frequency);
-    channels_[3] = ProcessChuaAttractor(frequency);
+  void Process(float frequency, float alt_frequency, int pair) {
+    switch (pair)
+    {
+    case 0:
+      {
+        if (g1_reset_) l_coordinates_.Init();
+        else ProcessLorenzAttractor(frequency);
+
+        if (g2_reset_) r_coordinates_.Init();
+        else ProcessRosslerAttractor(alt_frequency);
+        
+        channels_[0] = lorenz_output(l_coordinates_.x);
+        channels_[1] = lorenz_output(l_coordinates_.y);
+        channels_[2] = rossler_output(r_coordinates_.x);
+        channels_[3] = rossler_output(r_coordinates_.y);
+      }
+      break;
+    case 1:
+      {
+        if (g1_reset_) t_coordinates_.Init();
+        else ProcessThomasSymmetricAttractor(frequency);
+
+        if (g2_reset_) c_coordinates_.Init();
+        else ProcessChuaAttractor(alt_frequency);
+        
+        channels_[0] = thomas_output(t_coordinates_.x);
+        channels_[1] = thomas_output(t_coordinates_.y);
+        channels_[2] = chua_output(c_coordinates_.x);
+        channels_[3] = chua_output(c_coordinates_.y);
+      }
+      break;
+    default:
+      break;
+    }
   }
 
-  float ProcessLorenzAttractor(float f) {
-
+  void ProcessLorenzAttractor(float f) {
     float frequency = 1.3f * f;
 
     switch (speed_) {
@@ -92,25 +132,23 @@ class Attractors {
     CONSTRAIN(frequency, 0.0f, max_f);
 
     const float sigma = 10.0f;
-    const float rho = 28.0f;
+    const float rho = 28.0f * (1.0f + (lorenz_ / 2.0f));
     const float beta = 8.0f / 3.0f;
 
-    float x = lx_;
-    float y = ly_;
-    float z = lz_;
+    float x = l_coordinates_.x;
+    float y = l_coordinates_.y;
+    float z = l_coordinates_.z;
 
-    x += (frequency * ((sigma * (ly_ - lx_))));
-    y += (frequency * ((lx_ * (rho - lz_)) - ly_));
-    z += (frequency * ((lx_ * ly_) - (beta * lz_)));
+    x += (frequency * ((sigma * (l_coordinates_.y - l_coordinates_.x))));
+    y += (frequency * ((l_coordinates_.x * (rho - l_coordinates_.z)) - l_coordinates_.y));
+    z += (frequency * ((l_coordinates_.x * l_coordinates_.y) - (beta * l_coordinates_.z)));
 
-    lx_ = x;
-    ly_ = y;
-    lz_ = z;
-
-    return ((1.5f * x) / 4.0f) * gain_;
+    l_coordinates_.x = x;
+    l_coordinates_.y = y;
+    l_coordinates_.z = z;
   }
 
-  float ProcessRosslerAttractor(float f) {
+  void ProcessRosslerAttractor(float f) {
 
     float frequency = 1.3f * f;
 
@@ -132,19 +170,17 @@ class Attractors {
     const float b = 0.2;
     const float c = 5.7;
 
-    float x = rx_;
-    float y = ry_;
-    float z = rz_;
+    float x = r_coordinates_.x;
+    float y = r_coordinates_.y;
+    float z = r_coordinates_.z;
 
-    x += (-ry_ - rz_) * frequency;
-    y += (rx_ + a * ry_) * frequency;
-    z += (b + rz_ * (rx_ - c)) * frequency;
+    x += (-r_coordinates_.y - r_coordinates_.z) * frequency;
+    y += (r_coordinates_.x + a * r_coordinates_.y) * frequency;
+    z += (b + r_coordinates_.z * (r_coordinates_.x - c)) * frequency;
 
-    rx_ = x;
-    ry_ = y;
-    rz_ = z;
-
-    return (y / 2.0f) * gain_;
+    r_coordinates_.x = x;
+    r_coordinates_.y = y;
+    r_coordinates_.z = z;
   }
 
   /*float ProcessHenonAttractor(float f) {
@@ -189,8 +225,7 @@ class Attractors {
     return amp * (y - 2.f) * gain_;
   }*/
 
-  float ProcessThomasSymmetricAttractor(float frequency) {
-
+  void ProcessThomasSymmetricAttractor(float frequency) {
     switch (speed_) {
         case SLOW:
         frequency /= 8.0f;
@@ -210,10 +245,9 @@ class Attractors {
     float b = ((max_b - min_b) * thomas_ + min_b);
     CONSTRAIN(b, min_b, max_b);
 
-    const float amp = 0.5f;
-    float x = tx_;
-    float y = ty_;
-    float z = tz_;
+    float x = t_coordinates_.x;
+    float y = t_coordinates_.y;
+    float z = t_coordinates_.z;
     
     const float dx = tcsa(y, x, b);
     const float dy = tcsa(z, y, b);
@@ -222,14 +256,12 @@ class Attractors {
     y += frequency * dy;
     z += frequency * dz;
 
-    tx_ = x;
-    ty_ = y;
-    tz_ = z;
-
-    return amp * (y - 2.f) * gain_;
+    t_coordinates_.x = x;
+    t_coordinates_.y = y;
+    t_coordinates_.z = z;
   }
 
-  float ProcessChuaAttractor(float f) {
+  void ProcessChuaAttractor(float f) {
 
     float frequency = 1.3f * f;
     switch (speed_) {
@@ -249,11 +281,9 @@ class Attractors {
     const float b = ((max_b - min_b) * chua_ + min_b);
     const float c = 28.0f;
 
-    const float offset = -0.5f;
-    const float amp = 10.0f / 8.0f;
-    float x = cx_;
-    float y = cy_;
-    float z = cz_;
+    float x = c_coordinates_.x;
+    float y = c_coordinates_.y;
+    float z = c_coordinates_.z;
     
     const float dx = DS_DXDT(x, y, z);
     const float dy = DS_DYDT(x, y, z);
@@ -261,39 +291,46 @@ class Attractors {
     x += frequency * dx;
     y += frequency * dy;
     z += frequency * dz;
-
-    float output = (x + 18.0f) / 36.0f;
     
-    cx_ = x;
-    cy_ = y;
-    cz_ = z;
-
-    return (amp * output + offset) * 10.0f * gain_;
+    c_coordinates_.x = x;
+    c_coordinates_.y = y;
+    c_coordinates_.z = z;
   }
 
   private:
-    float tx_;
-    float ty_;
-    float tz_;
-
-    float rx_;
-    float ry_;
-    float rz_;
-
-    float lx_;
-    float ly_;
-    float lz_;
-
-    float cx_;
-    float cy_;
-    float cz_;
-
+    bool g1_reset_;
+    bool g2_reset_;
     float thomas_;
     float gain_;
     float rossler_;
+    float lorenz_;
     float chua_;   
     Speed speed_;
     float channels_[4];
+    Coordinates t_coordinates_;
+    Coordinates r_coordinates_;
+    Coordinates l_coordinates_;
+    Coordinates c_coordinates_;
+
+    inline float chua_output(float in) {
+      const float offset = -0.5f;
+      const float amp = 10.0f / 8.0f;
+      float output = (in + 18.0f) / 36.0f;
+
+      return (amp * output + offset) * 10.0f * gain_;
+    }
+
+    inline float thomas_output(float in) {
+      return 0.5f * (in - 2.f) * gain_;
+    }
+
+    inline float rossler_output(float in) {
+      return (in / 2.0f) * gain_;
+    }
+
+    inline float lorenz_output(float in) {
+      return ((1.5f * in) / 4.0f) * gain_;
+    }
 
     inline float tcsa(float  v, const float w, const float b) {
         v *= 0.159155f; // Convert radians to phase.
