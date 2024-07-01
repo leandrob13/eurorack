@@ -296,7 +296,6 @@ void Process(IOBuffer::Block* block, size_t size) {
         default:
           break;
       }
-      
   }
 }
 
