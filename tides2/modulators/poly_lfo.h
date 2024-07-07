@@ -113,7 +113,7 @@ class PolyLfo {
     }
   }
 
-  void Render(float frequency, PolySlopeGenerator::OutputSample* out, size_t size) {
+  void Render(float frequency, PolySlopeGenerator::OutputSample* out, const GateFlags* gate_flags, size_t size) {
     float max_index = float(num_waves - 1);
     float waveform = shape_ * max_index;
     const uint8_t* sine = &wt_lfo_waveforms[17 * 257];  
@@ -125,20 +125,27 @@ class PolyLfo {
       float wave = waveform_modulation.Next();
       float f0 = f0_modulation.Next();
 
+      bool reset = false;
+      if (gate_flags[index] & stmlib::GATE_FLAG_RISING) {
+        std::fill(&phase_[0], &phase_[kNumChannels], 0.0f);
+        reset = true;
+      }
+
       for (uint8_t i = 0; i < kNumChannels; ++i) {
         MAKE_INTEGRAL_FRACTIONAL(wave);
-        
-        if (spread_ > 0.5f) {
-          float phase_difference = (spread_ - 0.5f);
-          phase_[i] = i == 0 ? phase_[i] + f0 : phase_[i - 1] + phase_difference;
-        } else {
-          float spread = 2.0f * (1.0f - spread_);
-          phase_[i] += f0;
-          f0 *= spread;
-        }
+        if (!reset) {
+          if (spread_ > 0.5f) {
+            float phase_difference = (spread_ - 0.5f);
+            phase_[i] = i == 0 ? phase_[i] + f0 : phase_[i - 1] + phase_difference;
+          } else {
+            float spread = 2.0f * (1.0f - spread_);
+            phase_[i] += f0;
+            f0 *= spread;
+          }
 
-        if (phase_[i] >= 1.0f) {
-          phase_[i] -= 1.0f;
+          if (phase_[i] >= 1.0f) {
+            phase_[i] -= 1.0f;
+          }
         }
 
         float phase = phase_[i];

@@ -283,7 +283,7 @@ void Process(IOBuffer::Block* block, size_t size) {
             poly_lfo.set_spread(block->parameters.smoothness);
             poly_lfo.set_coupling(block->parameters.shift);
 
-            poly_lfo.Render(frequency, out, size);
+            poly_lfo.Render(frequency, out, block->input_patched[0] ? block->input[0] : no_gate, size);
 
             for (size_t i = 0; i < size; ++i) {
               for (size_t j = 0; j < kNumCvOutputs; ++j) {
@@ -295,7 +295,7 @@ void Process(IOBuffer::Block* block, size_t size) {
           break;
         case OUTPUT_MODE_FREQUENCY:  
           { 
-            wavetable_engine.Render(block->parameters, frequency, out, size);
+            wavetable_engine.Render(block->parameters, frequency, out, block->input_patched[0] ? block->input[0] : no_gate, size);
             
             for (size_t j = 0; j < kNumCvOutputs; ++j) {
               for (size_t i = 0; i < size; ++i) {       

@@ -76,6 +76,7 @@ class WavetableEngine {
   virtual void Render(const Parameters& parameters,
     float f0,
     PolySlopeGenerator::OutputSample* out,
+    const GateFlags* gate_flags,
     size_t size);
 
   inline float fold(float value, float fold_amount, bool bipolar) {

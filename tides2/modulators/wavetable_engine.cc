@@ -84,6 +84,7 @@ void WavetableEngine::Render(
     const Parameters& parameters,
     float f0,
     PolySlopeGenerator::OutputSample* out,
+    const GateFlags* gate_flags,
     size_t size) {
   
   ONE_POLE(x_pre_lp_, parameters.slope * 6.9999f, 0.2f);
@@ -118,6 +119,12 @@ void WavetableEngine::Render(
   for (size_t index = 0; index < size; index++) {
     const float f0 = f0_modulation.Next();
     const float sub_f = f0 * 0.5f;
+
+    bool reset = false;
+    if (gate_flags[index] & stmlib::GATE_FLAG_RISING) {
+      std::fill(&phases_[0], &phases_[2], 0.0f);
+      reset = true;
+    }
     
     const float gain = (1.0f / (f0 * 131072.0f)) * (0.95f - f0);
     const float cutoff = min(table_size_f * f0, 1.0f);
@@ -130,10 +137,12 @@ void WavetableEngine::Render(
     MAKE_INTEGRAL_FRACTIONAL(y);
     MAKE_INTEGRAL_FRACTIONAL(z);
 
-    for (int i = 0; i < 2; i++) {
-      phases_[i] += i == 0 ? f0 : sub_f;
-      if (phases_[i] >= 1.0f) {
-        phases_[i] -= 1.0f;
+    if (!reset) {
+      for (int i = 0; i < 2; i++) {
+        phases_[i] += i == 0 ? f0 : sub_f;
+        if (phases_[i] >= 1.0f) {
+          phases_[i] -= 1.0f;
+        }
       }
     }
     
