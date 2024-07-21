@@ -2,32 +2,32 @@
 const float genre_chords[1][25][12][4] = {
     {
         {   //Oct Stack1
-            { 0.14f, 12.24f, 12.26f, 0.0f }, //Oct Stack C
-            { 1.20f, 13.47f, 13.27f, 1.0f }, //Oct Stack C#
-            { 2.18f, 14.37f, 14.41f, 2.0f }, //Oct Stack D
-            { 3.35f, 15.30f, 15.18f, 3.0f }, //Oct Stack D#
-            { 4.10f, 16.38f, 16.10f, 4.0f }, //Oct Stack E
-            { 5.49f, 17.26f, 17.18f, 5.0f }, //Oct Stack F
-            { 6.10f, 18.15f, 18.44f, 6.0f }, //Oct Stack F#
-            { 7.30f, 19.27f, 19.10f, 7.0f }, //Oct Stack G
-            { 8.11f, 20.46f, 20.38f, 8.0f }, //Oct Stack G#
-            { 9.12f, 21.34f, 21.24f, 9.0f }, //Oct Stack A
-            { 10.47f, 22.50f, 22.45f, 10.0f }, //Oct Stack A#
-            { 11.41f, 23.31f, 23.20f, 11.0f } //Oct Stack B
+            { 0.15f, 12.15f, 12.0f, 0.0f }, //Oct Stack C
+            { 1.15f, 13.15f, 13.0f, 1.0f }, //Oct Stack C#
+            { 2.15f, 14.15f, 14.0f, 2.0f }, //Oct Stack D
+            { 3.15f, 15.15f, 15.0f, 3.0f }, //Oct Stack D#
+            { 4.15f, 16.15f, 16.0f, 4.0f }, //Oct Stack E
+            { 5.15f, 17.15f, 17.0f, 5.0f }, //Oct Stack F
+            { 6.15f, 18.15f, 18.0f, 6.0f }, //Oct Stack F#
+            { 7.15f, 19.15f, 19.0f, 7.0f }, //Oct Stack G
+            { 8.15f, 20.15f, 20.0f, 8.0f }, //Oct Stack G#
+            { 9.15f, 21.15f, 21.0f, 9.0f }, //Oct Stack A
+            { 10.15f, 22.15f, 22.0f, 10.0f }, //Oct Stack A#
+            { 11.15f, 23.15f, 23.0f, 11.0f } //Oct Stack B
         },
         {   //5th Stack1
-            { 19.15f, 12.43f, 7.32f, 0.0f }, //5th Stack C
-            { 20.37f, 13.19f, 8.43f, 1.0f }, //5th Stack C#
-            { 21.48f, 14.45f, 9.40f, 2.0f }, //5th Stack D
-            { 22.50f, 15.44f, 10.39f, 3.0f }, //5th Stack D#
-            { 23.16f, 16.25f, 11.39f, 4.0f }, //5th Stack E
-            { 24.47f, 17.44f, 12.15f, 5.0f }, //5th Stack F
-            { 25.12f, 18.31f, 13.38f, 6.0f }, //5th Stack F#
-            { 26.24f, 19.36f, 14.25f, 7.0f }, //5th Stack G
-            { 27.41f, 20.24f, 15.12f, 8.0f }, //5th Stack G#
-            { 28.36f, 21.46f, 16.20f, 9.0f }, //5th Stack A
-            { 29.43f, 22.38f, 17.43f, 10.0f }, //5th Stack A#
-            { 30.46f, 23.41f, 18.38f, 11.0f } //5th Stack B
+            { 19.15f, 12.15f, 7.0f, 0.0f }, //5th Stack C
+            { 20.15f, 13.15f, 8.0f, 1.0f }, //5th Stack C#
+            { 21.15f, 14.15f, 9.0f, 2.0f }, //5th Stack D
+            { 22.15f, 15.15f, 10.0f, 3.0f }, //5th Stack D#
+            { 23.15f, 16.15f, 11.0f, 4.0f }, //5th Stack E
+            { 24.15f, 17.15f, 12.0f, 5.0f }, //5th Stack F
+            { 25.15f, 18.15f, 13.0f, 6.0f }, //5th Stack F#
+            { 26.15f, 19.15f, 14.0f, 7.0f }, //5th Stack G
+            { 27.15f, 20.15f, 15.0f, 8.0f }, //5th Stack G#
+            { 28.15f, 21.15f, 16.0f, 9.0f }, //5th Stack A
+            { 29.15f, 22.15f, 17.0f, 10.0f }, //5th Stack A#
+            { 30.15f, 23.15f, 18.0f, 11.0f } //5th Stack B
         },
         {   //Trad Maj1
             { 48.0f, 43.0f, 40.0f, 24.0f }, //C

@@ -99,7 +99,7 @@ void ChordStringSynth::Process(
   
   synth.active_envelope = performance_state.envelope <= 0.98f;
   synth.delay_time = performance_state.delay_time;
-  synth.feedback = performance_state.feedback;
+  synth.feedback = performance_state.feedback + 0.5f;
   bool arpeggiated = performance_state.arp != 0;
 
   float envelope = performance_state.envelope;
@@ -139,7 +139,7 @@ void ChordStringSynth::Process(
   for (int32_t i = 0; i < chord_size; ++i) {
     int index = clocked ? cn : i;
     float n = genre_chords[0][synth.genre][chord][index];
-    float oct_down = (synth.genre < 3) ? 12.0f : 24.0f; 
+    float oct_down = (synth.genre < 2) ? 12.0f : 24.0f; 
     notes[i].note = n - oct_down * (1 - synth.arp.octave());
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
@@ -189,11 +189,17 @@ void ChordStringSynth::Process(
   
   switch (fx_type_) {
     case DELAY:
-    case DELAY_2:
       {
         delay_.set_delay_time(synth.delay_time);
         delay_.set_feedback(synth.feedback);
         if (synth.delay_time > 0.1f) delay_.Process(out, aux, size);
+      }
+      break;
+    case DELAY_2:
+      {
+        delay_.set_delay_time(synth.delay_time);
+        delay_.set_feedback(synth.feedback);
+        if (synth.delay_time > 0.1f) delay_.Process3(out, aux, size);
       }
       break;
 
