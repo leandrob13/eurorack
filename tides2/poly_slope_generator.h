@@ -295,10 +295,9 @@ class PolySlopeGenerator {
               ramp_mode>(raw, shape_table, shape_fractional);
 
         out[i].channel[0] = Fold<ramp_mode>(slope, fold) * shift;
-        out[i].channel[1] = Scale<ramp_mode>(is_phasor
-            ? ramp_waveshaper_[1].Shape<ramp_mode>(
-                raw, &lut_wavetable[8200], 0.0f)
-            : raw);
+        out[i].channel[1] = Fold<RAMP_MODE_MOD>(slope, fold) * shift;/*Scale<ramp_mode>(
+          is_phasor ? ramp_waveshaper_[1].Shape<ramp_mode>(raw, &lut_wavetable[8200], 0.0f) : raw
+        );*/
         out[i].channel[2] = ramp_shaper_[2].EOA<ramp_mode, range>(
             phase, frequency, pw) * 8.0f;
         out[i].channel[3] = ramp_shaper_[3].EOR<ramp_mode, range>(
