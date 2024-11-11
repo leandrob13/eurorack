@@ -161,8 +161,8 @@ class PolyLfo {
         const float p = phase * float(wavetable_size);
         MAKE_INTEGRAL_FRACTIONAL(p);
         
-        const float x0 = InterpolateWaveCubic(wavetable[wave_integral], p_integral, p_fractional);
-        const float x1 = InterpolateWaveCubic(wavetable[(wave_integral + 1)], p_integral, p_fractional);
+        const float x0 = InterpolateWaveCubic(wavetable[wave_integral % num_waves], p_integral, p_fractional);
+        const float x1 = InterpolateWaveCubic(wavetable[(wave_integral + 1) % num_waves], p_integral, p_fractional);
         
         float s = (x0 + (x1 - x0) * wave_fractional);
 
@@ -170,11 +170,14 @@ class PolyLfo {
         out[index].channel[i] = s; 
 
         wave += shape_spread_ * max_index;
-        if (wave > max_index) {
-          wave -= max_index;
-        } else if (wave < 0) {
-          wave += max_index;
+        if (wave < 0) {
+          wave += num_waves;
         }
+      }
+
+      out[index].channel[3] = 0.0f;
+      for (size_t i = 0; i < kNumChannels - 1; i++) {
+        out[index].channel[3] += out[index].channel[i] / 3.0f;
       }
     }
   }
