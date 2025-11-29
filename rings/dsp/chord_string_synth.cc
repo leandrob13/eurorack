@@ -174,11 +174,11 @@ void ChordStringSynth::Process(
   }
 
   if (bank_ == 2) {
-    ProcessFilter<FILTER_MODE_LOW_PASS>(envelope_value * 0.25f, out, aux, size);
+    ProcessFilter<FILTER_MODE_LOW_PASS>(envelope_value * 0.15f, out, aux, size);
   } else if (bank_ == 4) {
-    ProcessFilter<FILTER_MODE_HIGH_PASS>(envelope_value * 0.25f, out, aux, size);
+    ProcessFilter<FILTER_MODE_HIGH_PASS>(envelope_value * 0.15f, out, aux, size);
   } else if (bank_ == 3) {
-    ProcessFilter<FILTER_MODE_BAND_PASS>(envelope_value * 0.25f, out, aux, size);
+    ProcessFilter<FILTER_MODE_BAND_PASS>(envelope_value * 0.15f, out, aux, size);
   }
   
   if (clear_fx_) {
