@@ -199,7 +199,7 @@ void Settings::Init() {
   
   state_.color_blind = 0;
   state_.explicit_reset = 0;
-  state_.grids_hh_density = 128;
+  state_.grids_hh_density = 0;
   state_.grids_chaos = 0;
   
   freshly_baked_ = !chunk_storage_.Init(&persistent_data_, &state_);
