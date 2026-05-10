@@ -441,7 +441,7 @@ void TGenerator::Process(
       jitter_multiplier_ = multiplier;
 
       if (model_ == T_GENERATOR_MODEL_GRIDS) {
-        PatternGenerator::TickClock(6);
+        PatternGenerator::TickClock(1);
       }
       ConfigureSlaveRamps(random_vector);
     }
