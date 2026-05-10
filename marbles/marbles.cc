@@ -285,8 +285,9 @@ void Process(IOBuffer::Block* block, size_t size) {
       loop_length,
       parameters[ADC_CHANNEL_DEJA_VU_LENGTH]);
   
-  bool t_section_reset = settings.explicit_reset() && \
-      hidden_gates[ADC_CHANNEL_T_JITTER] & GATE_FLAG_RISING;
+  bool t_section_reset = settings.explicit_reset() &&
+      (state.t_model != T_GENERATOR_MODEL_GRIDS) &&
+      (hidden_gates[ADC_CHANNEL_T_JITTER] & GATE_FLAG_RISING);
   
   t_generator.set_model(TGeneratorModel(state.t_model));
   t_generator.set_range(TGeneratorRange(state.t_range));
