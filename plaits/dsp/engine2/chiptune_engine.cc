@@ -35,12 +35,14 @@ namespace plaits {
 using namespace std;
 using namespace stmlib;
 
+
 void ChiptuneEngine::Init(BufferAllocator* allocator) {
-  bass_.Init();
+  
   for (int i = 0; i < kChordNumNotes; ++i) {
     voice_[i].Init();
   }
-  
+  //noise_.Init();
+  bass_.Init();
   chords_.Init(allocator);
   
   arpeggiator_.Init();
@@ -115,8 +117,18 @@ void ChiptuneEngine::Render(
     }
   }
   
+  /*if (parameters.morph < 0.5f) {
+    //float f0bass = NoteToFrequency(parameters.note);
+    //bass_.Render(f0bass * 0.5f * root_transposition, aux, size);
+  } else {
+    //fill(&aux[0], &aux[size], 0.0f);
+    RenderNoise(parameters.tonic * root_transposition, aux, size);
+
+  }*/
+  //noise_.RenderNoise(parameters.timbre * (clocked ? 1.0f : root_transposition), aux, size);
   // Render bass note.
-  bass_.Render(f0 * 0.5f * root_transposition, aux, size);
+  float f0bass = NoteToFrequency(parameters.note);
+  bass_.Render(f0bass * 0.5f * root_transposition, aux, size);
   
   // Apply envelope if necessary.
   if (envelope_shape_ != NO_ENVELOPE) {

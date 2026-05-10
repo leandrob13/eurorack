@@ -37,6 +37,66 @@
 
 namespace plaits {
 
+const float periodTable[16] = {
+    30.0f, 28.0f, 26.0f, 24.0f, 22.0f, 20.0f, 18.0f, 16.0f, 14.0f, 12.0f, 10.0f, 8.0f, 6.0f, 4.0f, 2.0f, 0.0f
+    //4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+
+class NESNoiseChannel {
+public:
+    NESNoiseChannel() {};
+
+    void Init() {
+        lfsr = 1; // Reset LFSR
+        timer = 0; // Reset timer
+        sample = 0; //0x0cff;
+        //shortMode = false; // Reset mode
+        //volume = 8; // Reset volume
+        //outputBit = false; // Reset output bit
+    }
+
+    void RenderNoise(float period, float* out, size_t size) {
+      //uint16_t timerPeriod = static_cast<uint16_t>(period * 32.0f) + 2;
+      float timerPeriod = stmlib::Interpolate(periodTable, period, 14.0f);
+      //uint16_t timerPeriod = periodTable[index_integral % 16];
+      uint8_t current_lfsr = lfsr;
+      uint8_t current_sample = sample;
+      while (size--) {
+        
+        if (timer == 0) {
+          //bool outputBit = false;
+          timer = static_cast<uint8_t>(timerPeriod); // Reset timer
+          uint8_t tap = current_lfsr >> 1;
+          uint8_t random_bit = (current_lfsr ^ tap) & 1;
+          current_lfsr >>= 1;
+          if (random_bit) {
+            current_lfsr |= 0x4000;
+            current_sample = 15;//0x0300;
+          } else {
+            current_sample = 0; //0x0cff;
+          }
+          // Compute feedback based on mode
+          //bool feedback = (lfsr & 1) ^ ((lfsr >> 1) & 1);
+          //bool feedback = (lfsr & 1) ^ ((shortMode ? (lfsr >> 6) : (lfsr >> 1)) & 1);
+          //lfsr = (lfsr >> 1) | ((lfsr & 1) ^ ((lfsr >> 1) & 1) << 14); // Shift and insert feedback
+          //lfsr = (lfsr >> 1) | (feedback << 14); // Shift and insert feedback
+          //outputBit = !(lfsr & 1); // Output is the complement of bit 0
+        } /*else {
+            timer--;
+        }*/
+        *out++ = static_cast<float>(current_sample); // Output volume or silence
+      }
+      sample = current_sample;
+      lfsr = current_lfsr;
+      timer -= 1;
+    }
+
+private:
+    uint8_t sample;
+    uint8_t lfsr;           // 15-bit LFSR, initialized to non-zero
+    uint8_t timer;          // Timer counter
+};
+
 class ChiptuneEngine : public Engine {
  public:
   ChiptuneEngine() { }
@@ -62,6 +122,7 @@ class ChiptuneEngine : public Engine {
  private:
   SuperSquareOscillator voice_[kChordNumVoices];
   NESTriangleOscillator<> bass_;
+  //NESNoiseChannel noise_;
   
   ChordBank chords_;
   float chord_;
