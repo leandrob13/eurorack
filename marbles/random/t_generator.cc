@@ -143,6 +143,9 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
   grids_hh_density_ = 0.5f;
   grids_chaos_ = 0.0f;
 
+  grids_euclidean_ = false;
+  grids_euclidean_length_ = 8;
+
   master_phase_ = 0.0f;
   jitter_multiplier_ = 1.0f;
   phase_difference_ = 0.0f;
@@ -401,9 +404,18 @@ void TGenerator::Process(
 
   if (model_ == T_GENERATOR_MODEL_GRIDS) {
     PatternGeneratorSettings* s = PatternGenerator::mutable_settings();
-    s->options.drums.x = static_cast<uint8_t>(bias_ * 255.0f);
-    s->options.drums.y = static_cast<uint8_t>(jitter_ * 255.0f);
-    s->options.drums.randomness = static_cast<uint8_t>(grids_chaos_ * 255.0f);
+    PatternGenerator::set_output_mode(grids_euclidean_ ? OUTPUT_MODE_EUCLIDEAN
+                                                       : OUTPUT_MODE_DRUMS);
+    if (grids_euclidean_) {
+      uint8_t len = static_cast<uint8_t>((grids_euclidean_length_ - 1) * 8);
+      s->options.euclidean_length[0] = len;
+      s->options.euclidean_length[1] = len;
+      s->options.euclidean_length[2] = len;
+    } else {
+      s->options.drums.x          = static_cast<uint8_t>(bias_        * 255.0f);
+      s->options.drums.y          = static_cast<uint8_t>(jitter_      * 255.0f);
+      s->options.drums.randomness = static_cast<uint8_t>(grids_chaos_  * 255.0f);
+    }
     s->density[0] = static_cast<uint8_t>(grids_bd_density_ * 255.0f);
     s->density[1] = static_cast<uint8_t>(grids_sd_density_ * 255.0f);
     s->density[2] = static_cast<uint8_t>(grids_hh_density_ * 255.0f);
@@ -426,7 +438,9 @@ void TGenerator::Process(
           random_vector.x,
           sizeof(random_vector.x) / sizeof(float));
       
-      float jitter_amount = jitter_ * jitter_ * jitter_ * jitter_ * 36.0f;
+      float jitter_amount = (model_ == T_GENERATOR_MODEL_GRIDS)
+          ? 0.0f
+          : jitter_ * jitter_ * jitter_ * jitter_ * 36.0f;
       float x = FastBetaDistributionSample(random_vector.variables.jitter);
       float multiplier = SemitonesToRatio((x * 2.0f - 1.0f) * jitter_amount);
       

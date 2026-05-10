@@ -156,7 +156,15 @@ class TGenerator {
   inline void set_grids_chaos(float chaos) {
     grids_chaos_ = chaos;
   }
-  
+
+  inline void set_grids_euclidean(bool e) {
+    grids_euclidean_ = e;
+  }
+
+  inline void set_grids_euclidean_length(int length) {
+    grids_euclidean_length_ = length;
+  }
+
  private:
   union RandomVector {
     struct {
@@ -204,6 +212,9 @@ class TGenerator {
   float grids_sd_density_;
   float grids_hh_density_;
   float grids_chaos_;
+
+  bool grids_euclidean_;
+  int  grids_euclidean_length_;
   
   float master_phase_;
   float jitter_multiplier_;

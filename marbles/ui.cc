@@ -332,6 +332,8 @@ void Ui::OnSwitchReleased(const Event& e) {
         if (e.data >= kLongPressDuration) {
           if (!bank) {
             state->t_model += 3;
+          } else {
+            state->t_model -= 3;
           }
         } else {
           if (bank) {
@@ -456,9 +458,6 @@ void Ui::UpdateHiddenParameters() {
       if (switches_.pressed(SWITCH_T_MODEL)) {
         if (i == ADC_CHANNEL_T_BIAS) destination = &state->t_pulse_width_mean;
         if (i == ADC_CHANNEL_T_JITTER) destination = &state->t_pulse_width_std;
-      } else if (switches_.pressed(SWITCH_T_RANGE)) {
-        if (i == ADC_CHANNEL_T_BIAS) destination = &state->grids_hh_density;
-        if (i == ADC_CHANNEL_T_JITTER) destination = &state->grids_chaos;
       } else if (switches_.pressed(SWITCH_X_MODE)) {
         if (i == ADC_CHANNEL_T_RATE) destination = &state->y_divider;
         if (i == ADC_CHANNEL_X_SPREAD) destination = &state->y_spread;
