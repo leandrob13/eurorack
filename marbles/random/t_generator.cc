@@ -145,6 +145,7 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
 
   grids_euclidean_ = false;
   grids_euclidean_length_ = 8;
+  grids_pulse_ = 0;
 
   master_phase_ = 0.0f;
   jitter_multiplier_ = 1.0f;
@@ -399,6 +400,7 @@ void TGenerator::Process(
     }
     if (model_ == T_GENERATOR_MODEL_GRIDS) {
       PatternGenerator::Reset();
+      grids_pulse_ = 0;
     }
   }
 
@@ -455,6 +457,7 @@ void TGenerator::Process(
       jitter_multiplier_ = multiplier;
 
       if (model_ == T_GENERATOR_MODEL_GRIDS) {
+        grids_pulse_ = (grids_pulse_ + 1) % (kPulsesPerStep * 2);
         PatternGenerator::TickClock(1);
       }
       ConfigureSlaveRamps(random_vector);
@@ -473,7 +476,9 @@ void TGenerator::Process(
     
     previous_external_ramp_value_ = *ramps.external;
     ramps.external++;
-    *ramps.master++ = master_phase_;
+    *ramps.master++ = model_ == T_GENERATOR_MODEL_GRIDS
+        ? (static_cast<float>(grids_pulse_) + master_phase_) / static_cast<float>(kPulsesPerStep * 2)
+        : master_phase_;
     for (size_t j = 0; j < kNumTChannels; ++j) {
       slave_ramp_[j].Process(
           frequency * jitter_multiplier_,

@@ -273,14 +273,21 @@ void Process(IOBuffer::Block* block, size_t size) {
       }
     }
   }
-  
+
   // Generate gates for T-section (16%).
   ramps.master = &ramp_buffer[0];
   ramps.external = &ramp_buffer[kBlockSize];
   ramps.slave[0] = &ramp_buffer[kBlockSize * 2];
   ramps.slave[1] = &ramp_buffer[kBlockSize * 3];
-  
+
   const State& state = settings.state();
+  // In Grids mode all X outputs follow a single steady clock, never the
+  // individual pattern gate outputs.
+  if (state.t_model == T_GENERATOR_MODEL_GRIDS) {
+    xy_clock_source = block->input_patched[1]
+        ? CLOCK_SOURCE_EXTERNAL
+        : CLOCK_SOURCE_INTERNAL_T2;
+  }
   int deja_vu_length = deja_vu_length_quantizer.Lookup(
       loop_length,
       parameters[ADC_CHANNEL_DEJA_VU_LENGTH]);
@@ -426,9 +433,11 @@ void Process(IOBuffer::Block* block, size_t size) {
   const float* v = voltages;
   const bool* g = gates;
   const bool* mg = master_gates;
+  bool grids_mode = (state.t_model == T_GENERATOR_MODEL_GRIDS);
   for (size_t i = 0; i < size; ++i) {
-    //block->cv_output[1][i] = DacCode(1, SineOscillator(*v++));
-    block->cv_output[1][i] = DacCode(1, *v++);
+    float x1 = grids_mode ? (ramp_buffer[i] < 0.5f ? 5.0f : 0.0f) : *v;
+    v++;
+    block->cv_output[1][i] = DacCode(1, x1);
     block->cv_output[2][i] = DacCode(2, *v++);
     block->cv_output[3][i] = DacCode(3, *v++);
     block->cv_output[0][i] = DacCode(0, *v++);

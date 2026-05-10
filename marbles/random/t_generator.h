@@ -213,8 +213,9 @@ class TGenerator {
   float grids_hh_density_;
   float grids_chaos_;
 
-  bool grids_euclidean_;
-  int  grids_euclidean_length_;
+  bool    grids_euclidean_;
+  int     grids_euclidean_length_;
+  uint8_t grids_pulse_;
   
   float master_phase_;
   float jitter_multiplier_;
