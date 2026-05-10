@@ -84,7 +84,10 @@ struct State {
   uint8_t color_blind;
   uint8_t explicit_reset;
   
-  uint8_t padding[7];
+  uint8_t grids_hh_density;
+  uint8_t grids_chaos;
+  
+  uint8_t padding[5];
 
   enum { tag = 0x54415453 };
 };

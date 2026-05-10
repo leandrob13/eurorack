@@ -19,12 +19,12 @@
 
 #include "marbles/grids/pattern_generator.h"
 
-#include "marbles/grids/resources.h"
+#include "marbles/grids/grids_resources.h"
 
-#include "marbles/grids/random.h"
+#include "marbles/grids/grids_random.h"
 
 namespace marbles {
-  
+
 using namespace stmlib;
 
 /* static */
@@ -117,9 +117,9 @@ void PatternGenerator::EvaluateDrums() {
       uint8_t randomness = options_.swing
           ? 0 : settings_.options.drums.randomness >> 2;
 
-      //uint16_t temp = static_cast<uint16_t>(Random::GetByte()) * static_cast<uint16_t>(randomness);
+      //uint16_t temp = static_cast<uint16_t>(GridsRandom::GetByte()) * static_cast<uint16_t>(randomness);
       //part_perturbation_[i] = static_cast<uint8_t>(temp >> 8);
-      part_perturbation_[i] = U8U8MulShift8(Random::GetByte(), randomness);
+      part_perturbation_[i] = U8U8MulShift8(GridsRandom::GetByte(), randomness);
     }
   }
   
@@ -171,7 +171,7 @@ void PatternGenerator::EvaluateEuclidean() {
       euclidean_step_[i] -= length;
     }
     uint32_t step_mask = 1L << static_cast<uint32_t>(euclidean_step_[i]);
-    uint32_t pattern_bits = lut_res_euclidean[address % 1024];
+    uint32_t pattern_bits = grids_lut_res_euclidean[address % 1024];
     if (pattern_bits & step_mask) {
       state_ |= instrument_mask;
     }
@@ -204,10 +204,10 @@ void PatternGenerator::Evaluate() {
   state_ = 0;
   pulse_duration_counter_ = 0;
   
-  Random::Update();
+  GridsRandom::Update();
   // Highest bits: clock and random bit.
   state_ |= 0x40;
-  state_ |= Random::state() & 0x80;
+  state_ |= GridsRandom::state() & 0x80;
   
   if (output_clock()) {
     state_ |= OUTPUT_BIT_CLOCK;
@@ -237,5 +237,5 @@ uint8_t PatternGenerator::swing_amount() {
   }
 }
 
-}  // namespace grids
+}  // namespace marbles
 

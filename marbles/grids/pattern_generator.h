@@ -260,6 +260,6 @@ class PatternGenerator {
 
 extern PatternGenerator pattern_generator;
 
-}  // namespace grids
+}  // namespace marbles
 
 #endif // GRIDS_PATTERN_GENERATOR_H_

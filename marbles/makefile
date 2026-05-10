@@ -39,6 +39,7 @@ UPLOAD_COMMAND  = upload_combo_jtag_erase_first
 TARGET         = marbles
 PACKAGES       = marbles \
 		marbles/drivers \
+		marbles/grids \
 		marbles/ramp \
 		marbles/random \
 		stmlib/dsp \
@@ -46,7 +47,7 @@ PACKAGES       = marbles \
 		stmlib/system
 RESOURCES      = marbles/resources
 
-TOOLCHAIN_PATH ?= /usr/local/arm-4.8.3/
+TOOLCHAIN_PATH ?= ${MI_TOOLCHAIN_PATH}
 
 include stmlib/makefile.inc
 

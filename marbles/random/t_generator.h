@@ -48,7 +48,7 @@ enum TGeneratorModel {
 
   T_GENERATOR_MODEL_INDEPENDENT_BERNOULLI,
   T_GENERATOR_MODEL_DIVIDER,
-  T_GENERATOR_MODEL_THREE_STATES,
+  T_GENERATOR_MODEL_GRIDS,
   
   T_GENERATOR_MODEL_MARKOV,
 };
@@ -90,9 +90,10 @@ class TGenerator {
       const stmlib::GateFlags* external_clock,
       Ramps ramps,
       bool* gate,
+      bool* master_gate,
       size_t size) {
     bool reset = false;
-    Process(use_external_clock, &reset, external_clock, ramps, gate, size);
+    Process(use_external_clock, &reset, external_clock, ramps, gate, master_gate, size);
   }
 
   void Process(
@@ -101,6 +102,7 @@ class TGenerator {
       const stmlib::GateFlags* external_clock,
       Ramps ramps,
       bool* gate,
+      bool* master_gate,
       size_t size);
   
   inline void set_model(TGeneratorModel model) {
@@ -138,6 +140,22 @@ class TGenerator {
   inline void set_pulse_width_std(float pulse_width_std) {
     pulse_width_std_ = pulse_width_std;
   }
+
+  inline void set_grids_bd_density(float bd_density) {
+    grids_bd_density_ = bd_density;
+  }
+
+  inline void set_grids_sd_density(float sd_density) {
+    grids_sd_density_ = sd_density;
+  }
+
+  inline void set_grids_hh_density(float hh_density) {
+    grids_hh_density_ = hh_density;
+  }
+
+  inline void set_grids_chaos(float chaos) {
+    grids_chaos_ = chaos;
+  }
   
  private:
   union RandomVector {
@@ -156,6 +174,7 @@ class TGenerator {
   int GenerateThreeStates(const RandomVector& v);
   int GenerateDrums(const RandomVector& v);
   int GenerateMarkov(const RandomVector& v);
+  int GenerateGrids(const RandomVector& v);
   void ScheduleOutputPulses(const RandomVector& v, int bitmask);
 
   float RandomPulseWidth(int i, float u) {
@@ -180,6 +199,11 @@ class TGenerator {
   float jitter_;
   float pulse_width_mean_;
   float pulse_width_std_;
+
+  float grids_bd_density_;
+  float grids_sd_density_;
+  float grids_hh_density_;
+  float grids_chaos_;
   
   float master_phase_;
   float jitter_multiplier_;
@@ -187,6 +211,7 @@ class TGenerator {
   float previous_external_ramp_value_;
   
   bool use_external_clock_;
+  bool master_gate_;
 
   int32_t divider_pattern_length_;
   int32_t streak_counter_[kMarkovHistorySize];

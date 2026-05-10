@@ -211,6 +211,7 @@ GateFlags hidden_gates[kNumParameters];
 float parameters[kNumParameters];
 float ramp_buffer[kBlockSize * 4];
 bool gates[kBlockSize * 2];
+bool master_gates[kBlockSize];
 float voltages[kBlockSize * 4];
 Ramps ramps;
 GroupSettings x, y;
@@ -299,12 +300,19 @@ void Process(IOBuffer::Block* block, size_t size) {
   t_generator.set_length(deja_vu_length);
   t_generator.set_pulse_width_mean(float(state.t_pulse_width_mean) / 256.0f);
   t_generator.set_pulse_width_std(float(state.t_pulse_width_std) / 256.0f);
+  
+  t_generator.set_grids_bd_density(float(state.t_pulse_width_mean) / 256.0f);
+  t_generator.set_grids_sd_density(float(state.t_pulse_width_std) / 256.0f);
+  t_generator.set_grids_hh_density(float(state.grids_hh_density) / 256.0f);
+  t_generator.set_grids_chaos(float(state.grids_chaos) / 256.0f);
+
   t_generator.Process(
       block->input_patched[0],
       &t_section_reset,
       t_clock,
       ramps,
       gates,
+      master_gates,
       size);
 
   // Generate voltages for X-section (40%).
@@ -393,6 +401,7 @@ void Process(IOBuffer::Block* block, size_t size) {
   
   const float* v = voltages;
   const bool* g = gates;
+  const bool* mg = master_gates;
   for (size_t i = 0; i < size; ++i) {
     //block->cv_output[1][i] = DacCode(1, SineOscillator(*v++));
     block->cv_output[1][i] = DacCode(1, *v++);
@@ -400,7 +409,7 @@ void Process(IOBuffer::Block* block, size_t size) {
     block->cv_output[3][i] = DacCode(3, *v++);
     block->cv_output[0][i] = DacCode(0, *v++);
     block->gate_output[0][i + kGateDelay] = *g++;
-    block->gate_output[1][i + kGateDelay] = ramps.master[i] < 0.5f;
+    block->gate_output[1][i + kGateDelay] = *mg++;
     block->gate_output[2][i + kGateDelay] = *g++;
   }
   

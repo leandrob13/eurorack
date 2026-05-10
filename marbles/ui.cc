@@ -72,18 +72,6 @@ void Ui::Init(
   fill(&pot_value_[0], &pot_value_[ADC_CHANNEL_LAST], 0.0f);
   
   State* state = settings_->mutable_state();
-  alternate_knob_mappings_[ADC_CHANNEL_T_BIAS].unlock_switch = SWITCH_T_MODEL;
-  alternate_knob_mappings_[ADC_CHANNEL_T_BIAS].destination = &state->t_pulse_width_mean;
-  alternate_knob_mappings_[ADC_CHANNEL_T_JITTER].unlock_switch = SWITCH_T_MODEL;
-  alternate_knob_mappings_[ADC_CHANNEL_T_JITTER].destination = &state->t_pulse_width_std;
-  alternate_knob_mappings_[ADC_CHANNEL_T_RATE].unlock_switch = SWITCH_X_MODE;
-  alternate_knob_mappings_[ADC_CHANNEL_T_RATE].destination = &state->y_divider;
-  alternate_knob_mappings_[ADC_CHANNEL_X_SPREAD].unlock_switch = SWITCH_X_MODE;
-  alternate_knob_mappings_[ADC_CHANNEL_X_SPREAD].destination = &state->y_spread;
-  alternate_knob_mappings_[ADC_CHANNEL_X_BIAS].unlock_switch = SWITCH_X_MODE;
-  alternate_knob_mappings_[ADC_CHANNEL_X_BIAS].destination = &state->y_bias;
-  alternate_knob_mappings_[ADC_CHANNEL_X_STEPS].unlock_switch = SWITCH_X_MODE;
-  alternate_knob_mappings_[ADC_CHANNEL_X_STEPS].destination = &state->y_steps;
   
   setting_modification_flag_ = false;
   output_test_mode_ = false;
@@ -455,6 +443,7 @@ void Ui::NextCalibrationStep() {
 }
 
 void Ui::UpdateHiddenParameters() {
+  State* state = settings_->mutable_state();
   // Check if some pots have been moved.
   for (int i = 0; i < ADC_CHANNEL_LAST; ++i) {
     float new_value = cv_reader_->channel(i).unscaled_pot();
@@ -462,12 +451,26 @@ void Ui::UpdateHiddenParameters() {
     bool changed = fabs(new_value - old_value) >= 0.008f;
     if (changed) {
       pot_value_[i] = new_value;
-      AlternateKnobMapping mapping = alternate_knob_mappings_[i];
-      if (switches_.pressed(mapping.unlock_switch)) {
-        if (mapping.unlock_switch == SWITCH_T_RANGE && new_value < 0.1f) {
+      
+      uint8_t* destination = NULL;
+      if (switches_.pressed(SWITCH_T_MODEL)) {
+        if (i == ADC_CHANNEL_T_BIAS) destination = &state->t_pulse_width_mean;
+        if (i == ADC_CHANNEL_T_JITTER) destination = &state->t_pulse_width_std;
+      } else if (switches_.pressed(SWITCH_T_RANGE)) {
+        if (i == ADC_CHANNEL_T_BIAS) destination = &state->grids_hh_density;
+        if (i == ADC_CHANNEL_T_JITTER) destination = &state->grids_chaos;
+      } else if (switches_.pressed(SWITCH_X_MODE)) {
+        if (i == ADC_CHANNEL_T_RATE) destination = &state->y_divider;
+        if (i == ADC_CHANNEL_X_SPREAD) destination = &state->y_spread;
+        if (i == ADC_CHANNEL_X_BIAS) destination = &state->y_bias;
+        if (i == ADC_CHANNEL_X_STEPS) destination = &state->y_steps;
+      }
+      
+      if (destination) {
+        if (switches_.pressed(SWITCH_T_RANGE) && new_value < 0.1f) {
           new_value = 0.0f;
         }
-        *mapping.destination = static_cast<uint8_t>(new_value * 255.0f);
+        *destination = static_cast<uint8_t>(new_value * 255.0f);
         cv_reader_->mutable_channel(i)->LockPot();
 
         // The next time a switch is released, we unlock the pots.

@@ -33,6 +33,7 @@
 #include "stmlib/dsp/units.h"
 
 #include "marbles/resources.h"
+#include "marbles/grids/pattern_generator.h"
 
 namespace marbles {
 
@@ -137,6 +138,11 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
   pulse_width_mean_ = 0.0f;
   pulse_width_std_ = 0.0f;
 
+  grids_bd_density_ = 0.5f;
+  grids_sd_density_ = 0.5f;
+  grids_hh_density_ = 0.5f;
+  grids_chaos_ = 0.0f;
+
   master_phase_ = 0.0f;
   jitter_multiplier_ = 1.0f;
   phase_difference_ = 0.0f;
@@ -161,6 +167,10 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
   rate_quantizer_.Init(kNumInputDividerRatios, 0.05f, false);
   
   use_external_clock_ = false;
+  master_gate_ = false;
+
+  PatternGenerator::Init(0);
+  PatternGenerator::set_output_mode(OUTPUT_MODE_DRUMS);
 }
 
 int TGenerator::GenerateComplementaryBernoulli(const RandomVector& x) {
@@ -253,6 +263,12 @@ int TGenerator::GenerateMarkov(const RandomVector& x) {
   return bitmask;
 }
 
+int TGenerator::GenerateGrids(const RandomVector& x) {
+  uint8_t state = PatternGenerator::state();
+  master_gate_ = state & 0x02;
+  return (state & 0x01) | ((state & 0x04) >> 1);
+}
+
 void TGenerator::ScheduleOutputPulses(const RandomVector& x, int bitmask) {
   for (size_t i = 0; i < kNumTChannels; ++i) {
     slave_ramp_[i].Init(
@@ -275,10 +291,10 @@ void TGenerator::ConfigureSlaveRamps(const RandomVector& x) {
     case T_GENERATOR_MODEL_INDEPENDENT_BERNOULLI:
       ScheduleOutputPulses(x, GenerateIndependentBernoulli(x));
       break;
-
+    /*
     case T_GENERATOR_MODEL_THREE_STATES:
       ScheduleOutputPulses(x, GenerateThreeStates(x));
-      break;
+      break;*/
     
     case T_GENERATOR_MODEL_DRUMS:
       ScheduleOutputPulses(x, GenerateDrums(x));
@@ -288,6 +304,10 @@ void TGenerator::ConfigureSlaveRamps(const RandomVector& x) {
       ScheduleOutputPulses(x, GenerateMarkov(x));
       break;
     
+    case T_GENERATOR_MODEL_GRIDS:
+      ScheduleOutputPulses(x, GenerateGrids(x));
+      break;
+
     case T_GENERATOR_MODEL_CLUSTERS:
     case T_GENERATOR_MODEL_DIVIDER:
       --divider_pattern_length_;
@@ -326,6 +346,7 @@ void TGenerator::Process(
     const GateFlags* external_clock,
     Ramps ramps,
     bool* gate,
+    bool* master_gate,
     size_t size) {
   float internal_frequency;
   
@@ -373,6 +394,19 @@ void TGenerator::Process(
           sizeof(random_vector.x) / sizeof(float));
       ConfigureSlaveRamps(random_vector);
     }
+    if (model_ == T_GENERATOR_MODEL_GRIDS) {
+      PatternGenerator::Reset();
+    }
+  }
+
+  if (model_ == T_GENERATOR_MODEL_GRIDS) {
+    PatternGeneratorSettings* s = PatternGenerator::mutable_settings();
+    s->options.drums.x = static_cast<uint8_t>(bias_ * 255.0f);
+    s->options.drums.y = static_cast<uint8_t>(jitter_ * 255.0f);
+    s->options.drums.randomness = static_cast<uint8_t>(grids_chaos_ * 255.0f);
+    s->density[0] = static_cast<uint8_t>(grids_bd_density_ * 255.0f);
+    s->density[1] = static_cast<uint8_t>(grids_sd_density_ * 255.0f);
+    s->density[2] = static_cast<uint8_t>(grids_hh_density_ * 255.0f);
   }
   
   while (size--) {
@@ -405,12 +439,23 @@ void TGenerator::Process(
             : 1.0f / (1.0f - phase_difference_);
       
       jitter_multiplier_ = multiplier;
+
+      if (model_ == T_GENERATOR_MODEL_GRIDS) {
+        PatternGenerator::TickClock(6);
+      }
       ConfigureSlaveRamps(random_vector);
     }
     
     if (internal_frequency) {
       *ramps.external = master_phase_;
     }
+
+    if (model_ == T_GENERATOR_MODEL_GRIDS) {
+      *master_gate = master_gate_;
+    } else {
+      *master_gate = master_phase_ < 0.5f;
+    }
+    master_gate++;
     
     previous_external_ramp_value_ = *ramps.external;
     ramps.external++;
