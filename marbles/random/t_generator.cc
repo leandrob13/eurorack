@@ -175,6 +175,9 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
 
   PatternGenerator::Init(0);
   PatternGenerator::set_output_mode(OUTPUT_MODE_DRUMS);
+  // Options::unpack(0) leaves swing=true, which forces randomness to 0 in
+  // EvaluateDrums and makes the Deja Vu chaos knob a no-op.
+  PatternGenerator::set_swing(false);
 }
 
 int TGenerator::GenerateComplementaryBernoulli(const RandomVector& x) {

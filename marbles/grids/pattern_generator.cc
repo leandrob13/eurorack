@@ -112,13 +112,12 @@ uint8_t PatternGenerator::ReadDrumMap(
 /* static */
 void PatternGenerator::EvaluateDrums() {
   // At the beginning of a pattern, decide on perturbation levels.
+  // Perturbation is fixed for the whole 32-step cycle so the chaos knob
+  // produces coherent pattern variation rather than per-step noise.
   if (step_ == 0) {
     for (uint8_t i = 0; i < kNumParts; ++i) {
       uint8_t randomness = options_.swing
           ? 0 : settings_.options.drums.randomness >> 2;
-
-      //uint16_t temp = static_cast<uint16_t>(GridsRandom::GetByte()) * static_cast<uint16_t>(randomness);
-      //part_perturbation_[i] = static_cast<uint8_t>(temp >> 8);
       part_perturbation_[i] = U8U8MulShift8(GridsRandom::GetByte(), randomness);
     }
   }
