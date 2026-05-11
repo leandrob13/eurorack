@@ -306,10 +306,8 @@ void Process(IOBuffer::Block* block, size_t size) {
 
     float bd = cv_reader.channel(ADC_CHANNEL_T_RATE).cv() / 120.0f;
     float sd = cv_reader.channel(ADC_CHANNEL_T_BIAS).cv();
-    float hh = cv_reader.channel(ADC_CHANNEL_T_JITTER).cv() * 2.0f;
-    //CONSTRAIN(bd, 0.0f, 1.0f);
-    //CONSTRAIN(sd, 0.0f, 1.0f);
-    //CONSTRAIN(hh, 0.0f, 1.0f);
+    float hh = cv_reader.channel(ADC_CHANNEL_T_JITTER).cv();
+    
     t_generator.set_grids_bd_density(bd);
     t_generator.set_grids_sd_density(sd);
     t_generator.set_grids_hh_density(hh);
