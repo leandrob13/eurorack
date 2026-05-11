@@ -304,12 +304,12 @@ void Process(IOBuffer::Block* block, size_t size) {
     t_generator.set_bias(cv_reader.channel(ADC_CHANNEL_T_BIAS).pot());
     t_generator.set_jitter(cv_reader.channel(ADC_CHANNEL_T_JITTER).pot());
 
-    float bd = 0.5f + cv_reader.channel(ADC_CHANNEL_T_RATE).cv() / 120.0f;
-    float sd = 0.5f + cv_reader.channel(ADC_CHANNEL_T_BIAS).cv();
-    float hh = 0.5f + cv_reader.channel(ADC_CHANNEL_T_JITTER).cv();
-    CONSTRAIN(bd, 0.0f, 1.0f);
-    CONSTRAIN(sd, 0.0f, 1.0f);
-    CONSTRAIN(hh, 0.0f, 1.0f);
+    float bd = cv_reader.channel(ADC_CHANNEL_T_RATE).cv() / 120.0f;
+    float sd = cv_reader.channel(ADC_CHANNEL_T_BIAS).cv();
+    float hh = cv_reader.channel(ADC_CHANNEL_T_JITTER).cv() * 2.0f;
+    //CONSTRAIN(bd, 0.0f, 1.0f);
+    //CONSTRAIN(sd, 0.0f, 1.0f);
+    //CONSTRAIN(hh, 0.0f, 1.0f);
     t_generator.set_grids_bd_density(bd);
     t_generator.set_grids_sd_density(sd);
     t_generator.set_grids_hh_density(hh);
@@ -318,9 +318,8 @@ void Process(IOBuffer::Block* block, size_t size) {
     t_generator.set_grids_euclidean(euclidean);
     if (euclidean) {
       t_generator.set_grids_euclidean_length(deja_vu_length);
-    } else {
-      t_generator.set_grids_chaos(parameters[ADC_CHANNEL_DEJA_VU_AMOUNT]);
     }
+    t_generator.set_grids_chaos(parameters[ADC_CHANNEL_DEJA_VU_AMOUNT]);
   } else {
     t_generator.set_rate(parameters[ADC_CHANNEL_T_RATE]);
     t_generator.set_bias(parameters[ADC_CHANNEL_T_BIAS]);
