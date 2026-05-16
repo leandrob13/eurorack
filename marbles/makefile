@@ -42,6 +42,7 @@ PACKAGES       = marbles \
 		marbles/grids \
 		marbles/ramp \
 		marbles/random \
+		marbles/tb3po \
 		stmlib/dsp \
 		stmlib/utils \
 		stmlib/system

@@ -201,7 +201,8 @@ void Settings::Init() {
   state_.explicit_reset = 0;
   state_.grids_hh_density = 0;
   state_.grids_chaos = 0;
-  
+  state_.tb3po_seed = 0;
+
   freshly_baked_ = !chunk_storage_.Init(&persistent_data_, &state_);
   
   if (!freshly_baked_) {

@@ -86,8 +86,12 @@ struct State {
   
   uint8_t grids_hh_density;
   uint8_t grids_chaos;
-  
-  uint8_t padding[5];
+
+  // TB-3PO acid sequencer seed, persisted so a locked pattern survives a power
+  // cycle. Edge-triggered: written on the x_deja_vu OFF → ON|LOCKED edge.
+  uint16_t tb3po_seed;
+
+  uint8_t padding[3];
 
   enum { tag = 0x54415453 };
 };

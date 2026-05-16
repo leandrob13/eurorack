@@ -190,5 +190,105 @@ Those parameters are now driven entirely by CV inputs.
 | `t_pulse_width_std` | No | Normal T modes only |
 | `grids_hh_density` | No | Superseded by fixed-base + JITTER CV |
 | `grids_chaos` | No | Superseded by Deja Vu knob + CV |
+| `tb3po_seed` | Yes — TB-3PO acid seed | Persisted; survives power cycle when locked |
 
-Unused fields remain in `State` for ABI stability.
+Unused fields remain in `State` for ABI stability. The TB-3PO seed reuses
+2 of the 5 padding bytes; remaining padding is 3 bytes.
+
+---
+
+## TB-3PO X-Section (`marbles/tb3po/`)
+
+When `state.t_model == T_GENERATOR_MODEL_GRIDS` the X-section runs a TB-3PO
+style generative acid sequencer (`TB3PoSequencer`) locked to the same master
+clock as the Grids drum engine. Outside Grids mode the sequencer is dormant
+and the X-section behaves normally.
+
+### Files
+
+| File | Role |
+|---|---|
+| `tb3po/tb3po_sequencer.h / .cc` | Plain C++ port of the Hemisphere TB_3PO algorithm |
+
+The original applet (`tb3po/tb3po.h`) was an O&C/Hemisphere class with
+`HemisphereApplet` and `gfx*` dependencies that don't exist in Marbles. The
+pattern-generation algorithm is reused; UI, hex-seed editing, density
+automation, `no_slides`, and `hold_pitch` toggles are dropped from v1.
+
+`makefile` — `marbles/tb3po` is included in the `PACKAGES` list.
+
+### Clocking
+
+The sequencer ticks once per X1 clock cycle (one 16th note = 6 master_phase
+wraps = 2 Grids steps). marbles.cc detects step boundaries by watching the
+`ramps.master` step ramp:
+
+- A downward jump (ramp < prev_ramp − 0.5) marks the rising X1 edge →
+  `tb3po.Tick(reset)`.
+- A 0→1 crossing of 0.5 marks the falling X1 edge / half-step →
+  `tb3po.TickHalfCycle()` (drives gate-off).
+- `tb3po.StepSlide()` runs every sample to advance the slide IIR.
+
+No changes were needed in `t_generator` for the clock signal — `ramp_buffer`
+is already exposed at the marbles.cc level.
+
+### Outputs (Grids mode only)
+
+| Output | Voltage | Source |
+|---|---|---|
+| X1 | 5V / 0V | Existing Grids step-clock square wave (`ramp_buffer < 0.5`) |
+| X2 | 1V/oct, slewed | `tb3po.pitch_volts()` |
+| X3 | 5V / 0V | `tb3po.gate()` — held through slides |
+| Y  | 5V / 0V | `tb3po.accent()` (high only when accent ∧ gate) |
+| t1 / t2 / t3 | drums | unchanged (BD / SD / HH) |
+
+`xy_generator.Process()` still runs so its ramp_extractor and random_sequence
+state stay coherent across mode switches; its X2/X3/Y outputs are simply
+overwritten before the DAC write.
+
+### Control Mapping
+
+| Marbles control | TB-3PO parameter | Mapping |
+|---|---|---|
+| X SPREAD knob | `density_encoder` | `round(spread * 14)` → 0..14 (treated as −7..+7) |
+| X SPREAD CV  | `density_cv`      | `round(cv * 7)` → −7..+7 offset |
+| X BIAS knob+CV | `transpose`     | `(bias − 0.5) * 24` → ±12 scale degrees |
+| X STEPS knob | `num_steps`       | `1 + round(steps * 15)` → 1..16 |
+| X STEPS CV (rising edge) | T+X reset | Resets both Grids step pointer and TB-3PO step 0 |
+| X DEJA VU switch | `lock_seed`   | `ON\|LOCKED → OFF` → reseed; `OFF → ON\|LOCKED` → commit + flash save |
+| X SCALE (existing X selector) | scale lookup | reuses `state.x_scale` |
+| X RANGE switch | unused on X2 | pitch is always 1V/oct |
+| DEJA VU knob | unused on X | T-section already ignores it in Grids mode |
+
+### Seed Persistence
+
+- `State.tb3po_seed` (uint16) lives in `settings.cc Init()` defaults and rides
+  along with the normal `chunk_storage_` save/load path.
+- `Settings::SaveState()` is called from marbles.cc on the
+  `x_deja_vu OFF → ON|LOCKED` edge so the committed seed survives a power
+  cycle. We deliberately do **not** save on every OFF-tap reseed — auditioning
+  could flip the switch many times.
+- At boot, `Init()` calls `tb3po.set_seed(state.tb3po_seed)` and
+  `set_lock_seed(state.x_deja_vu != DEJA_VU_OFF)`. `prev_x_deja_vu` is
+  initialised from `state.x_deja_vu` so the first audio block doesn't fire a
+  spurious reseed.
+- TB-3PO uses `GridsRandom` as its RNG. The shared LFSR state is
+  saved/restored around each regeneration so PatternGenerator's pertubation
+  stream stays deterministic.
+
+### Slide IIR
+
+```cpp
+constexpr float kSlideCoef = 0.003f;  // ~25 ms TC at 32 kHz; tune on hardware
+pitch_volts_ += kSlideCoef * (slide_target_ - pitch_volts_);
+// Clamp to keep direction monotonic, matching TB-3PO's CONSTRAIN.
+```
+
+### Reset Handling
+
+The original applet treated `Reset()` and the first post-reset clock as two
+separate events; the first clock had `step_pv == step == 0`. In the ported
+version `Tick(reset=true)` collapses both into a single call: it sets
+`step_=0` *and* forces `prev_step=0` so the first step's slide / pitch
+decisions don't inherit stale bits from whatever step the pattern was on at
+the moment of reset.

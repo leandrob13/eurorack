@@ -45,6 +45,7 @@
 #include "marbles/resources.h"
 #include "marbles/scale_recorder.h"
 #include "marbles/settings.h"
+#include "marbles/tb3po/tb3po_sequencer.h"
 #include "marbles/ui.h"
 
 #include "stmlib/dsp/dsp.h"
@@ -81,6 +82,11 @@ RandomGenerator random_generator;
 RandomStream random_stream;
 TGenerator t_generator;
 XYGenerator xy_generator;
+TB3PoSequencer tb3po;
+
+// Persistent edge-detection state for the TB-3PO seed lifecycle and clock.
+uint8_t prev_x_deja_vu = DEJA_VU_OFF;
+float prev_grids_ramp = 0.0f;
 
 // Default interrupt handlers.
 extern "C" {
@@ -281,9 +287,10 @@ void Process(IOBuffer::Block* block, size_t size) {
   ramps.slave[1] = &ramp_buffer[kBlockSize * 3];
 
   const State& state = settings.state();
+  bool grids_mode = (state.t_model == T_GENERATOR_MODEL_GRIDS);
   // In Grids mode all X outputs follow a single steady clock, never the
   // individual pattern gate outputs.
-  if (state.t_model == T_GENERATOR_MODEL_GRIDS) {
+  if (grids_mode) {
     xy_clock_source = block->input_patched[1]
         ? CLOCK_SOURCE_EXTERNAL
         : CLOCK_SOURCE_INTERNAL_T2;
@@ -291,10 +298,31 @@ void Process(IOBuffer::Block* block, size_t size) {
   int deja_vu_length = deja_vu_length_quantizer.Lookup(
       loop_length,
       parameters[ADC_CHANNEL_DEJA_VU_LENGTH]);
-  
-  bool t_section_reset = settings.explicit_reset() &&
-      (state.t_model != T_GENERATOR_MODEL_GRIDS) &&
-      (hidden_gates[ADC_CHANNEL_T_JITTER] & GATE_FLAG_RISING);
+
+  // TB-3PO seed lifecycle (Grids mode only). x_deja_vu doubles as a "lock"
+  // switch: OFF → ON|LOCKED commits the current seed to flash; ON|LOCKED → OFF
+  // draws a new seed (auditioning). Edge-triggered to avoid flash thrash.
+  if (grids_mode && state.x_deja_vu != prev_x_deja_vu) {
+    if (state.x_deja_vu == DEJA_VU_OFF) {
+      tb3po.Reseed();
+      settings.mutable_state()->tb3po_seed = tb3po.seed();
+    } else if (prev_x_deja_vu == DEJA_VU_OFF) {
+      settings.mutable_state()->tb3po_seed = tb3po.seed();
+      settings.SaveState();
+    }
+  }
+  prev_x_deja_vu = state.x_deja_vu;
+
+  // In Grids mode the X STEPS CV rising edge resets both T and X sections so
+  // drums and bassline restart together. Outside Grids mode the existing
+  // T_JITTER-edge / explicit_reset path applies.
+  bool x_steps_reset = grids_mode &&
+      (hidden_gates[ADC_CHANNEL_X_STEPS] & GATE_FLAG_RISING);
+
+  bool t_section_reset = (settings.explicit_reset() &&
+      !grids_mode &&
+      (hidden_gates[ADC_CHANNEL_T_JITTER] & GATE_FLAG_RISING)) ||
+      x_steps_reset;
   
   t_generator.set_model(TGeneratorModel(state.t_model));
   t_generator.set_range(TGeneratorRange(state.t_range));
@@ -326,12 +354,31 @@ void Process(IOBuffer::Block* block, size_t size) {
     t_generator.set_pulse_width_std(float(state.t_pulse_width_std) / 256.0f);
   }
   
-  if (state.t_model != T_GENERATOR_MODEL_GRIDS) {
+  if (!grids_mode) {
     t_generator.set_deja_vu(
         state.t_deja_vu == DEJA_VU_LOCKED
             ? 0.5f
             : (state.t_deja_vu == DEJA_VU_ON ? deja_vu : 0.0f));
     t_generator.set_length(deja_vu_length);
+  }
+
+  // TB-3PO per-block parameter feed. Pattern shape (density, scale) goes in
+  // here; live transpose/length/lock are also refreshed each block.
+  if (grids_mode) {
+    int dens_enc = static_cast<int>(
+        roundf(parameters[ADC_CHANNEL_X_SPREAD] * 14.0f));
+    int dens_cv = static_cast<int>(
+        roundf(cv_reader.channel(ADC_CHANNEL_X_SPREAD).cv() * 7.0f));
+    tb3po.set_density(dens_enc, dens_cv);
+
+    float transpose = (parameters[ADC_CHANNEL_X_BIAS] - 0.5f) * 24.0f;
+    tb3po.set_transpose(transpose);
+
+    int len = 1 + static_cast<int>(parameters[ADC_CHANNEL_X_STEPS] * 15.0f);
+    tb3po.set_length(len);
+
+    tb3po.set_lock_seed(state.x_deja_vu != DEJA_VU_OFF);
+    tb3po.set_scale(&settings.persistent_data().scale[state.x_scale]);
   }
 
   t_generator.Process(
@@ -430,14 +477,43 @@ void Process(IOBuffer::Block* block, size_t size) {
   const float* v = voltages;
   const bool* g = gates;
   const bool* mg = master_gates;
-  bool grids_mode = (state.t_model == T_GENERATOR_MODEL_GRIDS);
+  bool tb3po_reset_pending = x_steps_reset;
   for (size_t i = 0; i < size; ++i) {
-    float x1 = grids_mode ? (ramp_buffer[i] < 0.5f ? 5.0f : 0.0f) : *v;
-    v++;
+    float ramp = ramp_buffer[i];
+    if (grids_mode) {
+      // ramps.master in Grids mode is the X-section step ramp
+      // (grids_pulse_ + master_phase_) / 6, cycling 0→1 once per 16th note.
+      // A downward jump signals a step boundary (and the rising X1 edge); a
+      // 0→1 crossing of 0.5 marks the falling X1 edge (half-step / gate-off).
+      bool step_boundary = ramp < prev_grids_ramp - 0.5f;
+      bool half_cycle = prev_grids_ramp < 0.5f && ramp >= 0.5f;
+      if (step_boundary) {
+        tb3po.Tick(tb3po_reset_pending);
+        tb3po_reset_pending = false;
+      }
+      if (half_cycle) {
+        tb3po.TickHalfCycle();
+      }
+      tb3po.StepSlide();
+    }
+    prev_grids_ramp = ramp;
+
+    // X1 = 5V/0V Grids clock; X2/X3/Y = TB-3PO pitch / gate / accent. The
+    // voltages buffer is advanced past all four X slots so xy_generator state
+    // remains coherent across mode switches even when its outputs are unused.
+    float vx1 = *v++;
+    float vx2 = *v++;
+    float vx3 = *v++;
+    float vy  = *v++;
+    float x1 = grids_mode ? (ramp < 0.5f ? 5.0f : 0.0f)             : vx1;
+    float x2 = grids_mode ? tb3po.pitch_volts()                     : vx2;
+    float x3 = grids_mode ? (tb3po.gate()   ? 5.0f : 0.0f)          : vx3;
+    float y  = grids_mode ? (tb3po.accent() ? 5.0f : 0.0f)          : vy;
+
     block->cv_output[1][i] = DacCode(1, x1);
-    block->cv_output[2][i] = DacCode(2, *v++);
-    block->cv_output[3][i] = DacCode(3, *v++);
-    block->cv_output[0][i] = DacCode(0, *v++);
+    block->cv_output[2][i] = DacCode(2, x2);
+    block->cv_output[3][i] = DacCode(3, x3);
+    block->cv_output[0][i] = DacCode(0, y);
     block->gate_output[0][i + kGateDelay] = *g++;
     block->gate_output[1][i + kGateDelay] = *mg++;
     block->gate_output[2][i + kGateDelay] = *g++;
@@ -489,6 +565,19 @@ void Init() {
 
   for (size_t i = 0; i < kNumScales; ++i) {
     xy_generator.LoadScale(i, settings.persistent_data().scale[i]);
+  }
+
+  // Seed the TB-3PO acid sequencer from saved state so a locked pattern
+  // survives a power cycle. set_scale() must come before set_seed() because
+  // regeneration depends on scale_size.
+  tb3po.Init();
+  {
+    const State& s = settings.state();
+    tb3po.set_scale(&settings.persistent_data().scale[s.x_scale]);
+    tb3po.set_lock_seed(s.x_deja_vu != DEJA_VU_OFF);
+    tb3po.set_seed(s.tb3po_seed);
+    prev_x_deja_vu = s.x_deja_vu;
+    prev_grids_ramp = 0.0f;
   }
   
   for (size_t i = 0; i < kNumGateOutputs; ++i) {
