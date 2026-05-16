@@ -245,8 +245,17 @@ void Process(IOBuffer::Block* block, size_t size) {
       &block->adc_value[0],
       parameters,
       hidden_gates);
-  
-  float deja_vu = parameters[ADC_CHANNEL_DEJA_VU_AMOUNT];
+
+  const State& state = settings.state();
+  bool grids_mode = (state.t_model == T_GENERATOR_MODEL_GRIDS);
+
+  // In Grids mode the DEJA VU CV jack is repurposed as the reset trigger
+  // (see grids_reset below), so its CV must not contaminate the deja_vu /
+  // grids_chaos parameter or the UI lock deadband. Use pot-only there.
+  float deja_vu = grids_mode
+      ? cv_reader.channel(ADC_CHANNEL_DEJA_VU_AMOUNT).pot()
+      : parameters[ADC_CHANNEL_DEJA_VU_AMOUNT];
+  float deja_vu_raw = deja_vu;
   
   //  Deadband near 12 o'clock for the deja vu parameter.
   const float d = fabsf(deja_vu - 0.5f);
@@ -286,8 +295,6 @@ void Process(IOBuffer::Block* block, size_t size) {
   ramps.slave[0] = &ramp_buffer[kBlockSize * 2];
   ramps.slave[1] = &ramp_buffer[kBlockSize * 3];
 
-  const State& state = settings.state();
-  bool grids_mode = (state.t_model == T_GENERATOR_MODEL_GRIDS);
   // In Grids mode all X outputs follow a single steady clock, never the
   // individual pattern gate outputs.
   if (grids_mode) {
@@ -313,16 +320,16 @@ void Process(IOBuffer::Block* block, size_t size) {
   }
   prev_x_deja_vu = state.x_deja_vu;
 
-  // In Grids mode the X STEPS CV rising edge resets both T and X sections so
+  // In Grids mode the DEJA VU CV rising edge resets both T and X sections so
   // drums and bassline restart together. Outside Grids mode the existing
   // T_JITTER-edge / explicit_reset path applies.
-  bool x_steps_reset = grids_mode &&
-      (hidden_gates[ADC_CHANNEL_X_STEPS] & GATE_FLAG_RISING);
+  bool grids_reset = grids_mode &&
+      (hidden_gates[ADC_CHANNEL_DEJA_VU_AMOUNT] & GATE_FLAG_RISING);
 
   bool t_section_reset = (settings.explicit_reset() &&
       !grids_mode &&
       (hidden_gates[ADC_CHANNEL_T_JITTER] & GATE_FLAG_RISING)) ||
-      x_steps_reset;
+      grids_reset;
   
   t_generator.set_model(TGeneratorModel(state.t_model));
   t_generator.set_range(TGeneratorRange(state.t_range));
@@ -345,7 +352,7 @@ void Process(IOBuffer::Block* block, size_t size) {
     if (euclidean) {
       t_generator.set_grids_euclidean_length(deja_vu_length);
     }
-    t_generator.set_grids_chaos(parameters[ADC_CHANNEL_DEJA_VU_AMOUNT]);
+    t_generator.set_grids_chaos(deja_vu_raw);
   } else {
     t_generator.set_rate(parameters[ADC_CHANNEL_T_RATE]);
     t_generator.set_bias(parameters[ADC_CHANNEL_T_BIAS]);
@@ -371,13 +378,24 @@ void Process(IOBuffer::Block* block, size_t size) {
         roundf(cv_reader.channel(ADC_CHANNEL_X_SPREAD).cv() * 7.0f));
     tb3po.set_density(dens_enc, dens_cv);
 
-    float transpose = (parameters[ADC_CHANNEL_X_BIAS] - 0.5f) * 24.0f;
-    tb3po.set_transpose(transpose);
+    // BIAS knob: quantized in semitones over a ±18 (3 octave) range.
+    // BIAS CV: 1V/oct tracking — X_BIAS uses the default uncalibrated cv
+    // scale (-2.0), so cv() runs ~±1 over ±5 V → ×60 yields semitones/V.
+    // CV is clamped to ±18 semitones so it spans the same 3-octave range.
+    float bias_pot = cv_reader.channel(ADC_CHANNEL_X_BIAS).unscaled_pot();
+    int knob_semitones = static_cast<int>(roundf((bias_pot - 0.5f) * 36.0f));
+    CONSTRAIN(knob_semitones, -18, 18);
+    float cv_semitones = cv_reader.channel(ADC_CHANNEL_X_BIAS).cv() * 60.0f;
+    CONSTRAIN(cv_semitones, -18.0f, 18.0f);
+    tb3po.set_transpose(static_cast<float>(knob_semitones) + cv_semitones);
 
-    // LENGTH knob (Deja Vu Length) drives TB-3PO step count. Shared with the
-    // Grids Euclidean length when in Euclidean sub-mode, so drums and bass
-    // loop in lock-step.
-    tb3po.set_length(deja_vu_length);
+    // STEPS knob + CV drives TB-3PO step count, 1..32 (kMaxSteps). The
+    // channel's HysteresisFilter (hysteresis=0.02) is wider than one step
+    // (1/31 ≈ 0.032), so rounding the combined parameter is stable.
+    int tb3po_length = 1 + static_cast<int>(
+        roundf(parameters[ADC_CHANNEL_X_STEPS] * 31.0f));
+    CONSTRAIN(tb3po_length, 1, TB3PoSequencer::kMaxSteps);
+    tb3po.set_length(tb3po_length);
 
     tb3po.set_lock_seed(state.x_deja_vu != DEJA_VU_OFF);
     tb3po.set_scale(&settings.persistent_data().scale[state.x_scale]);
@@ -479,7 +497,7 @@ void Process(IOBuffer::Block* block, size_t size) {
   const float* v = voltages;
   const bool* g = gates;
   const bool* mg = master_gates;
-  bool tb3po_reset_pending = x_steps_reset;
+  bool tb3po_reset_pending = grids_reset;
   for (size_t i = 0; i < size; ++i) {
     float ramp = ramp_buffer[i];
     if (grids_mode) {

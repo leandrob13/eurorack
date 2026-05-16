@@ -16,7 +16,7 @@ struct Scale;
 
 class TB3PoSequencer {
  public:
-  static const int kMaxSteps = 16;
+  static const int kMaxSteps = 32;
   // Matches kMaxDegrees in marbles/random/quantizer.h. Kept local so we can
   // forward-declare Scale instead of pulling its header into this one.
   static const int kMaxScaleDegrees = 16;
