@@ -55,6 +55,8 @@ void TB3PoSequencer::Init() {
   transpose_ = 0.0f;
   scale_ = NULL;
   scale_size_ = 0;
+  std::fill(&active_idx_[0], &active_idx_[kMaxScaleDegrees], 0);
+  active_count_ = 0;
 
   step_ = 0;
   gate_ = false;
@@ -90,14 +92,61 @@ void TB3PoSequencer::set_lock_seed(bool locked) {
 }
 
 void TB3PoSequencer::set_scale(const Scale* scale) {
+  bool changed = (scale != scale_);
   scale_ = scale;
   if (scale_) {
     int n = scale_->num_degrees;
     if (n <= 0) n = 1;
-    if (n > 32) n = 32;
+    if (n > kMaxScaleDegrees) n = kMaxScaleDegrees;
     scale_size_ = static_cast<uint8_t>(n);
   } else {
     scale_size_ = 12;
+  }
+  BuildActiveDegrees();
+  if (changed) {
+    // Force a regeneration on the next Tick so the new in-scale set is
+    // reflected immediately, even if density and active_count_ happen to
+    // collide with the values that produced the current pattern.
+    current_pattern_density_ = 0xff;
+  }
+}
+
+void TB3PoSequencer::BuildActiveDegrees() {
+  active_count_ = 0;
+  if (!scale_ || scale_size_ == 0) return;
+
+  // For 12-degree weighted presets (the Marbles defaults: C major, Pentatonic,
+  // raags, etc.) low-weight cells are chromatic passing tones used by the
+  // weight-aware X-section quantizer. TB-3PO doesn't quantize — it walks
+  // cells directly — so filter those out using a relative threshold so we
+  // keep only the diatonic/in-scale degrees.
+  //
+  // For smaller scales (Pelog, user-recorded scales), every degree IS the
+  // scale; weight just shapes the X-section's selection probability, so we
+  // pass them through verbatim.
+  uint8_t threshold = 0;
+  if (scale_size_ >= 12) {
+    uint8_t max_w = 0;
+    for (int i = 0; i < scale_size_; ++i) {
+      if (scale_->degree[i].weight > max_w) {
+        max_w = scale_->degree[i].weight;
+      }
+    }
+    // ~25% of peak. Empirically catches diatonic notes (weight ≥ 64) on the
+    // stock 12-degree presets and rejects the 4/8/16/32-weight chromatic
+    // passing tones.
+    threshold = static_cast<uint8_t>(max_w >> 2);
+    if (threshold == 0) threshold = 1;
+  }
+
+  for (int i = 0; i < scale_size_; ++i) {
+    if (scale_->degree[i].weight >= threshold) {
+      active_idx_[active_count_++] = static_cast<uint8_t>(i);
+    }
+  }
+  if (active_count_ == 0) {
+    // Pathological fallback (all weights zero): always allow the root.
+    active_idx_[active_count_++] = 0;
   }
 }
 
@@ -175,8 +224,11 @@ void TB3PoSequencer::StepSlide() {
 }
 
 void TB3PoSequencer::RegenerateIfDirty() {
+  // current_pattern_scale_size_ tracks the active (in-scale) count, not the
+  // full degree count, since active_count_ is what controls the random walk
+  // and the pitch lookup table.
   if (density_ != current_pattern_density_ ||
-      scale_size_ != current_pattern_scale_size_) {
+      active_count_ != current_pattern_scale_size_) {
     RegenerateAll();
   }
 }
@@ -192,7 +244,7 @@ void TB3PoSequencer::RegenerateAll() {
   ApplyDensity();
 
   current_pattern_density_ = density_;
-  current_pattern_scale_size_ = scale_size_;
+  current_pattern_scale_size_ = active_count_;
 
   GridsRandom::Seed(saved);
 }
@@ -200,17 +252,20 @@ void TB3PoSequencer::RegenerateAll() {
 void TB3PoSequencer::RegeneratePitches() {
   int pitch_change_dens = GetPitchChangeDensity();
   int available_pitches = 0;
-  if (scale_size_ > 0) {
+  if (active_count_ > 0) {
     if (pitch_change_dens > 7) {
-      available_pitches = scale_size_ - 1;
+      available_pitches = active_count_ - 1;
     } else if (pitch_change_dens < 2) {
       available_pitches = pitch_change_dens;
     } else {
-      int range_from_scale = scale_size_ - 3;
+      int range_from_scale = active_count_ - 3;
       if (range_from_scale < 4) range_from_scale = 4;
       available_pitches = 3 + (pitch_change_dens - 3) * range_from_scale / 4;
-      CONSTRAIN(available_pitches, 1, scale_size_ - 1);
+      CONSTRAIN(available_pitches, 1, active_count_ - 1);
     }
+    // Final safety: tiny scales (e.g. active_count_==1) may have made the
+    // formulas above produce out-of-range indices.
+    CONSTRAIN(available_pitches, 0, active_count_ - 1);
   }
 
   oct_ups_ = 0;
@@ -221,7 +276,11 @@ void TB3PoSequencer::RegeneratePitches() {
     if (s > 0 && RandBit(force_repeat_note_prob)) {
       notes_[s] = notes_[s - 1];
     } else {
-      notes_[s] = static_cast<uint8_t>(RandRange(available_pitches + 1));
+      // Store the *rank* into active_idx_[], not the raw degree, so transpose
+      // and octave shifts later operate in active-degree units — that's what
+      // keeps the line in-scale even at extreme transpose offsets.
+      int rank = RandRange(available_pitches + 1);
+      notes_[s] = static_cast<uint8_t>(rank);
 
       oct_ups_ <<= 1;
       oct_downs_ <<= 1;
@@ -284,22 +343,33 @@ int TB3PoSequencer::GetNextStep(int step) const {
 }
 
 float TB3PoSequencer::PitchForStep(int s) const {
-  if (!scale_ || scale_size_ == 0) {
+  if (!scale_ || active_count_ == 0 || scale_size_ == 0) {
     return 0.0f;
   }
-  int n = scale_size_;
-  int idx = kOctaveOffset * n + static_cast<int>(notes_[s]);
-  idx += static_cast<int>(transpose_ + (transpose_ >= 0.0f ? 0.5f : -0.5f));
+  // Everything below is in *active-rank* units. We collapse to a (octave,
+  // degree-in-octave) pair only at the end so transpose and octave shifts
+  // always land on a degree that exists in active_idx_.
+  int rank = static_cast<int>(notes_[s]);
+  int transpose_int =
+      static_cast<int>(transpose_ + (transpose_ >= 0.0f ? 0.5f : -0.5f));
+  int total = rank + transpose_int + kOctaveOffset * active_count_;
   if (StepIsOctUp(s)) {
-    idx += n;
+    total += active_count_;
   } else if (StepIsOctDown(s)) {
-    idx -= n;
+    total -= active_count_;
   }
-  if (idx < 0) idx = 0;
-  // cell_voltage handles arbitrarily large indices via i / num_degrees octave
-  // arithmetic. Cap to a safe upper bound to avoid silly transients.
-  const int kSafeMax = n * 16;
-  if (idx > kSafeMax) idx = kSafeMax;
+
+  // Euclidean division — C++ % is implementation-defined for negatives.
+  int octave = total / active_count_;
+  int within = total % active_count_;
+  if (within < 0) {
+    within += active_count_;
+    --octave;
+  }
+  if (octave < 0) octave = 0;
+  if (octave > 16) octave = 16;
+
+  int idx = octave * scale_size_ + static_cast<int>(active_idx_[within]);
   return scale_->cell_voltage(idx);
 }
 

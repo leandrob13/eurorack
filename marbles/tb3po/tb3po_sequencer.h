@@ -17,6 +17,9 @@ struct Scale;
 class TB3PoSequencer {
  public:
   static const int kMaxSteps = 16;
+  // Matches kMaxDegrees in marbles/random/quantizer.h. Kept local so we can
+  // forward-declare Scale instead of pulling its header into this one.
+  static const int kMaxScaleDegrees = 16;
 
   TB3PoSequencer() { }
   ~TB3PoSequencer() { }
@@ -54,6 +57,7 @@ class TB3PoSequencer {
   void RegeneratePitches();
   void RegenerateAll();
   void RegenerateIfDirty();
+  void BuildActiveDegrees();
   float PitchForStep(int s) const;
 
   bool StepIsGated(int s) const   { return gates_    & (1u << s); }
@@ -82,7 +86,13 @@ class TB3PoSequencer {
   int   density_;          // clamp(encoder + cv, 0, 14)
   float transpose_;
   const Scale* scale_;
-  uint8_t scale_size_;
+  uint8_t scale_size_;     // full scale->num_degrees (used for octave math)
+
+  // Active (in-scale) degree filter, rebuilt on scale change. notes_[s] holds
+  // an index from active_idx_[] so TB-3PO never plays an out-of-scale note
+  // even on a weight-based 12-degree preset like C major or Pentatonic.
+  uint8_t active_idx_[kMaxScaleDegrees];
+  uint8_t active_count_;
 
   // Playback.
   uint8_t step_;

@@ -374,8 +374,10 @@ void Process(IOBuffer::Block* block, size_t size) {
     float transpose = (parameters[ADC_CHANNEL_X_BIAS] - 0.5f) * 24.0f;
     tb3po.set_transpose(transpose);
 
-    int len = 1 + static_cast<int>(parameters[ADC_CHANNEL_X_STEPS] * 15.0f);
-    tb3po.set_length(len);
+    // LENGTH knob (Deja Vu Length) drives TB-3PO step count. Shared with the
+    // Grids Euclidean length when in Euclidean sub-mode, so drums and bass
+    // loop in lock-step.
+    tb3po.set_length(deja_vu_length);
 
     tb3po.set_lock_seed(state.x_deja_vu != DEJA_VU_OFF);
     tb3po.set_scale(&settings.persistent_data().scale[state.x_scale]);

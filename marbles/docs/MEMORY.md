@@ -253,12 +253,12 @@ overwritten before the DAC write.
 | X SPREAD knob | `density_encoder` | `round(spread * 14)` → 0..14 (treated as −7..+7) |
 | X SPREAD CV  | `density_cv`      | `round(cv * 7)` → −7..+7 offset |
 | X BIAS knob+CV | `transpose`     | `(bias − 0.5) * 24` → ±12 scale degrees |
-| X STEPS knob | `num_steps`       | `1 + round(steps * 15)` → 1..16 |
+| LENGTH knob (Deja Vu Length) | `num_steps` | Shared with Grids Euclidean length: `deja_vu_length_quantizer.Lookup(loop_length, …)` → 1..16 |
 | X STEPS CV (rising edge) | T+X reset | Resets both Grids step pointer and TB-3PO step 0 |
 | X DEJA VU switch | `lock_seed`   | `ON\|LOCKED → OFF` → reseed; `OFF → ON\|LOCKED` → commit + flash save |
 | X SCALE (existing X selector) | scale lookup | reuses `state.x_scale` |
 | X RANGE switch | unused on X2 | pitch is always 1V/oct |
-| DEJA VU knob | unused on X | T-section already ignores it in Grids mode |
+| X STEPS knob | unused | only X STEPS CV is consumed (as reset) |
 
 ### Seed Persistence
 
@@ -283,6 +283,37 @@ constexpr float kSlideCoef = 0.003f;  // ~25 ms TC at 32 kHz; tune on hardware
 pitch_volts_ += kSlideCoef * (slide_target_ - pitch_volts_);
 // Clamp to keep direction monotonic, matching TB-3PO's CONSTRAIN.
 ```
+
+### In-scale Pitch Selection
+
+TB-3PO walks `Scale::degree[]` cells directly — it doesn't go through the
+weight-aware quantizer. To avoid emitting chromatic passing tones on the
+stock 12-degree weighted presets (C major, Pentatonic, raags) the sequencer
+filters degrees by weight at `set_scale()` time:
+
+- Compute `max_weight` across all degrees.
+- For 12-degree scales, keep degrees with `weight >= max_weight / 4`.
+  Empirically catches the diatonic notes (weight ≥ 64 in the defaults) and
+  rejects the 4/8/16/32-weight chromatic passing tones.
+- For smaller scales (Pelog, user-recorded), keep every degree — weight in
+  those presets shapes the quantizer's selection probability, not scale
+  membership.
+
+The filtered list lives in `active_idx_[]` (degree indices) and `notes_[s]`
+stores a *rank* into that list. `PitchForStep` composes transpose and octave
+shifts in **active-rank units**, so transposing by +1 moves to the next
+in-scale degree (e.g., C → D on C major), never to a chromatic passing tone.
+
+Scales walked by the sequencer with this filter:
+
+| X SCALE | num_degrees | active_count | Notes |
+|---|---|---|---|
+| C major | 12 | 7 | C D E F G A B |
+| C minor | 12 | 7 | C D Eb F G Ab Bb |
+| Pentatonic | 12 | 5 | C D F G A |
+| Pelog | 7 | 7 | all 7 (no filter) |
+| Raag Bhairav That | 12 | 7 | starred degrees only |
+| Raag Shri | 12 | 7 | starred degrees only |
 
 ### Reset Handling
 
