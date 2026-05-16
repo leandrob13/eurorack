@@ -352,7 +352,25 @@ void Process(IOBuffer::Block* block, size_t size) {
     if (euclidean) {
       t_generator.set_grids_euclidean_length(deja_vu_length);
     }
-    t_generator.set_grids_chaos(deja_vu_raw);
+
+    // DEJA VU knob is bipolar around 12 o'clock in Grids mode:
+    //   CCW (< 0.5) → drum-mode chaos and Euclidean-mode T2 fills
+    //   CW  (> 0.5) → Euclidean-mode rotation
+    //   center      → no effect anywhere
+    // tb3po does not read deja_vu_raw, so the X-section is unaffected.
+    float ccw = (0.5f - deja_vu_raw) * 2.0f;
+    CONSTRAIN(ccw, 0.0f, 1.0f);
+    float cw = (deja_vu_raw - 0.5f) * 2.0f;
+    CONSTRAIN(cw, 0.0f, 1.0f);
+    // Square-root taper on chaos: grids divides perturbation by 4 internally,
+    // so a linear ramp feels inert until the last quarter. sqrt(ccw) front-
+    // loads the response so small CCW turns already audibly perturb the map.
+    t_generator.set_grids_chaos(sqrtf(ccw));
+    // Cubic taper + ~1/3 cap on the fill probability: small CCW turns
+    // sprinkle hits rather than flood T2, and even fully-CCW stays
+    // sub-saturation (~33% per empty step) so the base groove still reads.
+    t_generator.set_grids_euclidean_fill(ccw * ccw * ccw * 0.33f);
+    t_generator.set_grids_euclidean_rotation(cw);
   } else {
     t_generator.set_rate(parameters[ADC_CHANNEL_T_RATE]);
     t_generator.set_bias(parameters[ADC_CHANNEL_T_BIAS]);

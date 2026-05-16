@@ -169,10 +169,27 @@ void PatternGenerator::EvaluateEuclidean() {
     while (euclidean_step_[i] >= length) {
       euclidean_step_[i] -= length;
     }
-    uint32_t step_mask = 1L << static_cast<uint32_t>(euclidean_step_[i]);
+    // Rotation is applied to a local copy of the step counter so the
+    // intrinsic per-part wrap (and the step==0 reset marker below) keep
+    // their natural phase — only the lookup phase shifts.
+    uint8_t step_for_lookup = euclidean_step_[i];
+    if (settings_.euclidean_rotation) {
+      uint16_t rot = (static_cast<uint16_t>(settings_.euclidean_rotation) *
+                      length) >> 8;
+      step_for_lookup = static_cast<uint8_t>((step_for_lookup + rot) % length);
+    }
+    uint32_t step_mask = 1L << static_cast<uint32_t>(step_for_lookup);
     uint32_t pattern_bits = grids_lut_res_euclidean[address % 1024];
-    if (pattern_bits & step_mask) {
+    bool hit = (pattern_bits & step_mask);
+    if (hit) {
       state_ |= instrument_mask;
+    } else if (i == 1 && settings_.euclidean_fill_t2) {
+      // Probabilistic fill on the SD slot (T2) — only fires on steps the
+      // base Euclidean pattern leaves empty, so the original groove stays
+      // intact and the fill just adds density between hits.
+      if (GridsRandom::GetByte() < settings_.euclidean_fill_t2) {
+        state_ |= instrument_mask;
+      }
     }
     if (euclidean_step_[i] == 0) {
       reset_bits |= instrument_mask;

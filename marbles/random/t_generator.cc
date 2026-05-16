@@ -145,6 +145,8 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
 
   grids_euclidean_ = false;
   grids_euclidean_length_ = 8;
+  grids_euclidean_fill_ = 0.0f;
+  grids_euclidean_rotation_ = 0.0f;
   grids_pulse_ = 0;
 
   master_phase_ = 0.0f;
@@ -416,10 +418,18 @@ void TGenerator::Process(
       s->options.euclidean_length[0] = len;
       s->options.euclidean_length[1] = len;
       s->options.euclidean_length[2] = len;
+      s->euclidean_fill_t2 = static_cast<uint8_t>(
+          grids_euclidean_fill_ * 255.0f);
+      s->euclidean_rotation = static_cast<uint8_t>(
+          grids_euclidean_rotation_ * 255.0f);
     } else {
       s->options.drums.x          = static_cast<uint8_t>(bias_        * 255.0f);
       s->options.drums.y          = static_cast<uint8_t>(jitter_      * 255.0f);
       s->options.drums.randomness = static_cast<uint8_t>(grids_chaos_  * 255.0f);
+      // Fills / rotation are euclidean-only; zero them in drums mode so a
+      // mode flip can't leave stale values in the static settings struct.
+      s->euclidean_fill_t2 = 0;
+      s->euclidean_rotation = 0;
     }
     s->density[0] = static_cast<uint8_t>(grids_bd_density_ * 255.0f);
     s->density[1] = static_cast<uint8_t>(grids_sd_density_ * 255.0f);

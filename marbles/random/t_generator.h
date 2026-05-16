@@ -165,6 +165,14 @@ class TGenerator {
     grids_euclidean_length_ = length;
   }
 
+  inline void set_grids_euclidean_fill(float fill) {
+    grids_euclidean_fill_ = fill;
+  }
+
+  inline void set_grids_euclidean_rotation(float rotation) {
+    grids_euclidean_rotation_ = rotation;
+  }
+
  private:
   union RandomVector {
     struct {
@@ -215,6 +223,8 @@ class TGenerator {
 
   bool    grids_euclidean_;
   int     grids_euclidean_length_;
+  float   grids_euclidean_fill_;
+  float   grids_euclidean_rotation_;
   uint8_t grids_pulse_;
   
   float master_phase_;

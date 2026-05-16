@@ -51,6 +51,11 @@ struct PatternGeneratorSettings {
     uint8_t euclidean_length[kNumParts];
   } options;
   uint8_t density[kNumParts];
+  // Euclidean-only modulation driven by the DEJA VU knob in Marbles' Grids
+  // sub-mode. fill_t2 adds probabilistic extra hits to the SD slot (part 1);
+  // rotation shifts the lookup phase of all three Euclidean patterns.
+  uint8_t euclidean_fill_t2;
+  uint8_t euclidean_rotation;
 };
 
 enum OutputMode {
