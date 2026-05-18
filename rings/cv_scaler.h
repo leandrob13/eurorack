@@ -164,6 +164,12 @@ class CvScaler {
   inline uint8_t adc_value(size_t index) const {
     return adc_.value(index) >> 8;
   }
+
+  // Bank button held = "resonance edit mode": brightness pot drives
+  // filter_resonance instead of filter_frequency. filter_frequency latches
+  // at its last value while held; filter_resonance latches at its last value
+  // when released.
+  inline void set_bank_button_held(bool held) { bank_button_held_ = held; }
   
   inline bool gate_value() const {
     return trigger_input_.value();
@@ -217,6 +223,10 @@ class CvScaler {
   
   bool normalization_probe_enabled_;
   bool normalization_probe_forced_state_;
+
+  bool bank_button_held_;
+  float filter_frequency_latched_;
+  float filter_resonance_latched_;
   
   static ChannelSettings channel_settings_[ADC_CHANNEL_LAST];
   

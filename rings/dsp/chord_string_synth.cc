@@ -38,16 +38,25 @@ using namespace stmlib;
 void ChordStringSynth::Init(uint16_t* reverb_buffer) {
   bank_ = 1;
   fx_type_ = DELAY;
+  bank_changed_ = false;
+  clear_fx_ = false;
 
   for (int32_t i = 0; i < stringSynthVoices; ++i) {
     synth.voice[i].Init();
   }
   previous_strum = false;
   synth.tonic = 0.0f;
+  synth.filter_resonance = 0.0f;
   synth.envelope.Init();
   synth.arp.Init();
-  
-  filter_.Init();
+
+  svf_[0].Init();
+  svf_[1].Init();
+  previous_cutoff_ = 0.0f;
+  previous_q_ = 0.0f;
+  previous_gain_ = 1.0f;
+  previous_stage2_gain_ = 1.0f;
+
   limiter_.Init();
   delay_.Init(reverb_buffer);
   reverb_.Init(reverb_buffer);
@@ -95,6 +104,7 @@ void ChordStringSynth::Process(
     synth.filter_frequency = performance_state.filter_frequency;
     synth.filter_cv = performance_state.filter_cv;
     synth.filter_amount = performance_state.filter_amount;
+    synth.filter_resonance = performance_state.filter_resonance;
   }
   
   synth.active_envelope = performance_state.envelope <= 0.98f;
@@ -174,11 +184,11 @@ void ChordStringSynth::Process(
   }
 
   if (bank_ == 2) {
-    ProcessFilter<FILTER_MODE_LOW_PASS>(envelope_value * 0.15f, out, aux, size);
-  } else if (bank_ == 4) {
-    ProcessFilter<FILTER_MODE_HIGH_PASS>(envelope_value * 0.15f, out, aux, size);
+    ProcessFilterLP(envelope_value * 0.15f, out, aux, size);
   } else if (bank_ == 3) {
-    ProcessFilter<FILTER_MODE_BAND_PASS>(envelope_value * 0.15f, out, aux, size);
+    ProcessFilterBP(envelope_value * 0.15f, out, aux, size);
+  } else if (bank_ == 4) {
+    ProcessFilterHP(envelope_value * 0.15f, out, aux, size);
   }
   
   if (clear_fx_) {

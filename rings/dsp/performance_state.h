@@ -55,6 +55,7 @@ struct PerformanceState {
   float filter_frequency; // Position pot
   float filter_amount; // Position attenueverter
   float filter_cv; // Position CV
+  float filter_resonance; // Modal capture (bank button held + brightness pot)
   float feedback; // Position attenueverter unipolar
   float delay_time; // Position pot un LP
 };

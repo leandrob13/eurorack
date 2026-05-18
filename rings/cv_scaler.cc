@@ -82,6 +82,10 @@ void CvScaler::Init(CalibrationData* calibration_data) {
   
   normalization_probe_enabled_ = true;
   normalization_probe_forced_state_ = false;
+
+  bank_button_held_ = false;
+  filter_frequency_latched_ = 0.0f;
+  filter_resonance_latched_ = 0.0f;
 }
 
 void CvScaler::DetectAudioNormalization(Codec::Frame* in, size_t size) {
@@ -245,7 +249,18 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   performance_state->vca_level = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_DAMPING);
   performance_state->vca_cv = adc_lp_[ADC_CHANNEL_CV_DAMPING];
 
-  performance_state->filter_frequency = adc_lp_[ADC_CHANNEL_POT_BRIGHTNESS];
+  // Modal capture: while the bank button is held, brightness pot edits
+  // filter_resonance; otherwise it edits filter_frequency. Each axis latches
+  // at its last value while the other is being edited. CV / attenuverter
+  // continue to modulate cutoff regardless.
+  float pot_brightness = adc_lp_[ADC_CHANNEL_POT_BRIGHTNESS];
+  if (bank_button_held_) {
+    filter_resonance_latched_ = pot_brightness;
+  } else {
+    filter_frequency_latched_ = pot_brightness;
+  }
+  performance_state->filter_frequency = filter_frequency_latched_;
+  performance_state->filter_resonance = filter_resonance_latched_;
   performance_state->filter_amount = adc_lp_[ADC_CHANNEL_ATTENUVERTER_BRIGHTNESS];
   performance_state->filter_cv = adc_lp_[ADC_CHANNEL_CV_BRIGHTNESS];
   

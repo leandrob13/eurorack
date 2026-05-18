@@ -39,6 +39,11 @@
 namespace rings {
 
 const int32_t kLongPressDuration = 3000;
+// Holding the bank button for longer than this enters "resonance edit mode":
+// the brightness pot captures into filter_resonance via cv_scaler. A release
+// after this threshold suppresses the normal bank cycle so the user can edit
+// resonance without flipping topology on release.
+const int32_t kResonanceEditThreshold = 300;
 
 using namespace std;
 using namespace stmlib;
@@ -112,6 +117,14 @@ void Ui::Poll() {
       press_time_[i] = 0;
     }
   }
+
+  // Forward bank-button-held state to cv_scaler so brightness pot can
+  // capture filter_resonance while held. Only meaningful in the easter-egg
+  // chord-string-synth filter banks (2/3/4); harmless in stock mode since
+  // PerformanceState::filter_resonance is unused by Part.
+  bool bank_held = press_time_[0] != 0 &&
+      (system_clock.milliseconds() - press_time_[0]) > kResonanceEditThreshold;
+  cv_scaler_->set_bank_button_held(bank_held);
   
   bool blink = (system_clock.milliseconds() & 127) > 64;
   bool slow_blink = (system_clock.milliseconds() & 255) > 128;
@@ -263,6 +276,10 @@ void Ui::OnSwitchReleased(const Event& e) {
           string_synth_->set_bank(3);
         }
         SaveState();
+      } else if (e.data >= kResonanceEditThreshold &&
+                 settings_->state().easter_egg) {
+        // Released after a deliberate hold in easter-egg mode: user was
+        // editing filter_resonance via the brightness pot. Don't cycle banks.
       } else {
         switch (mode_) {
           case UI_MODE_CALIBRATION_C1:

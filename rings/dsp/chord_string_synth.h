@@ -41,7 +41,9 @@
 #include "rings/dsp/performance_state.h"
 #include "rings/dsp/string_synth_envelope.h"
 #include "rings/dsp/string_synth_voice.h"
+#include "stmlib/dsp/dsp.h"
 #include "stmlib/dsp/filter.h"
+#include "stmlib/dsp/parameter_interpolator.h"
 #include "stmlib/stmlib.h"
 
 namespace rings {
@@ -76,6 +78,7 @@ struct Synth {
   float filter_frequency; // Position pot
   float filter_amount;    // Position attenueverter
   float filter_cv;        // Position CV
+  float filter_resonance; // Modal capture: bank button held + brightness pot
   float delay_time;
   float feedback;
   float registration_amount;
@@ -108,7 +111,12 @@ public:
     fx_type_ = fx_type;
   }
 
-  inline void set_bank(int32_t bank) { bank_ = bank; }
+  inline void set_bank(int32_t bank) {
+    if (bank != bank_) {
+      bank_changed_ = true;
+    }
+    bank_ = bank;
+  }
 
 private:
   float ProcessEnvelopes(float shape, uint8_t flag) {
@@ -165,42 +173,142 @@ private:
     return a0 * 0.25f * SemitonesToRatio(midi_note);
   }
 
-  template <FilterMode mode>
-  void ProcessFilter(float envelope, float *out, float *aux, size_t size) {
-
-    for (size_t i = 0; i < size; ++i) {
-      filter_in_buffer_[i] = out[i] + aux[i];
-    }
-
+  // Plaits-style VCF, "subtle" flavor — corresponds to the harmonics 0.5→0
+  // path in plaits/dsp/engine2/virtual_analog_vcf_engine.cc: dual-cascaded
+  // LP is always engaged (stage2_gain = 1) and the second stage's gentle Q
+  // (`0.5 + 0.025·q`) rounds off the resonance peak from the first stage.
+  // Drive gain starts at 1.0 with no signal loss at zero resonance and only
+  // attenuates as resonance increases, to keep self-oscillation peaks tame.
+  void ComputeFilterTargets(float envelope_value, float *cutoff_target,
+                            float *q_target, float *gain_target,
+                            float *stage2_target) {
     float f0 = NoteToFrequency(synth.tonic);
     float cutoff = f0 * SemitonesToRatio(120.0f * (synth.filter_frequency - 0.2f));
-
     float modulation = synth.active_envelope
-                           ? (envelope + synth.filter_cv) * synth.filter_amount
+                           ? (envelope_value + synth.filter_cv) * synth.filter_amount
                            : synth.filter_cv * synth.filter_amount;
+    float total = cutoff + modulation;
+    CONSTRAIN(total, 0.0f, 1.0f);
+    *cutoff_target = total;
 
-    float total_mod = cutoff + modulation;
-    CONSTRAIN(total_mod, 0.0f, 1.0f);
-    std::fill(&out[0], &out[size], 0.0f);
-    std::fill(&aux[0], &aux[size], 0.0f);
+    float resonance = synth.filter_resonance;
+    CONSTRAIN(resonance, 0.0f, 1.0f);
+    float resonance_sqr = resonance * resonance;
+    *q_target = resonance_sqr * resonance_sqr * 48.0f;
 
-    filter_.set_f_q<FREQUENCY_FAST>(total_mod, mode == FILTER_MODE_LOW_PASS ? 0.75f : 2.0f);
-    float o1;
-    for (size_t i = 0; i < size; ++i) {
-      o1 = filter_.Process<mode>(filter_in_buffer_[i]);
-      filter_out_buffer_[i] =
-          mode == FILTER_MODE_LOW_PASS ? filter_.Process<mode>(o1) : o1;
+    // Always-on stage-2 cascade — defines the subtle flavor.
+    *stage2_target = 1.0f;
+
+    // Linear taper that preserves loudness at r=0 and compensates downward
+    // for the resonance peak as r approaches 1.
+    *gain_target = 1.0f - 0.5f * resonance;
+  }
+
+  void MaybeResetFilterState(float cutoff_target, float q_target,
+                             float gain_target, float stage2_target) {
+    if (bank_changed_) {
+      previous_cutoff_ = cutoff_target;
+      previous_q_ = q_target;
+      previous_gain_ = gain_target;
+      previous_stage2_gain_ = stage2_target;
+      svf_[0].Reset();
+      svf_[1].Reset();
+      bank_changed_ = false;
     }
+  }
 
-    for (size_t j = 0; j < size; ++j) {
-      out[j] += filter_out_buffer_[j] * 0.5f;
-      aux[j] += filter_out_buffer_[j] * 0.5f;
+  void ProcessFilterLP(float envelope, float *out, float *aux, size_t size) {
+    float cutoff_target, q_target, gain_target, stage2_target;
+    ComputeFilterTargets(envelope, &cutoff_target, &q_target, &gain_target,
+                         &stage2_target);
+    MaybeResetFilterState(cutoff_target, q_target, gain_target, stage2_target);
+
+    stmlib::ParameterInterpolator cutoff_mod(&previous_cutoff_, cutoff_target, size);
+    stmlib::ParameterInterpolator q_mod(&previous_q_, q_target, size);
+    stmlib::ParameterInterpolator gain_mod(&previous_gain_, gain_target, size);
+    stmlib::ParameterInterpolator stage2_mod(&previous_stage2_gain_, stage2_target, size);
+
+    for (size_t i = 0; i < size; ++i) {
+      // Plaits clamps cutoff to 0.25 (Nyquist/2 = 12 kHz at 48 kHz) — Rings'
+      // chord-string filter is expected to "fully open" past the audible
+      // range, so we only guard against going over Nyquist (set_f_q's tan
+      // approximation degrades sharply past ~0.5).
+      const float f = std::min(cutoff_mod.Next(), 0.49f);
+      const float q = q_mod.Next();
+      const float g = gain_mod.Next();
+      const float s2 = stage2_mod.Next();
+
+      svf_[0].set_f_q<stmlib::FREQUENCY_FAST>(f, 0.5f + q);
+      svf_[1].set_f_q<stmlib::FREQUENCY_FAST>(f, 0.5f + 0.025f * q);
+
+      const float in_sample = stmlib::SoftClip((out[i] + aux[i]) * g);
+      float lp = svf_[0].Process<stmlib::FILTER_MODE_LOW_PASS>(in_sample);
+      lp = stmlib::SoftClip(lp * g);
+      lp += s2 * (stmlib::SoftClip(svf_[1].Process<stmlib::FILTER_MODE_LOW_PASS>(lp)) - lp);
+
+      out[i] = lp * 0.5f;
+      aux[i] = lp * 0.5f;
+    }
+  }
+
+  void ProcessFilterBP(float envelope, float *out, float *aux, size_t size) {
+    float cutoff_target, q_target, gain_target, stage2_target;
+    ComputeFilterTargets(envelope, &cutoff_target, &q_target, &gain_target,
+                         &stage2_target);
+    MaybeResetFilterState(cutoff_target, q_target, gain_target, stage2_target);
+
+    stmlib::ParameterInterpolator cutoff_mod(&previous_cutoff_, cutoff_target, size);
+    stmlib::ParameterInterpolator q_mod(&previous_q_, q_target, size);
+    stmlib::ParameterInterpolator gain_mod(&previous_gain_, gain_target, size);
+
+    for (size_t i = 0; i < size; ++i) {
+      const float f = std::min(cutoff_mod.Next(), 0.49f);
+      const float q = q_mod.Next();
+      const float g = gain_mod.Next();
+
+      // Q baseline 2.0 matches the old fixed-Q BP — Plaits' 0.5 baseline
+      // is fine for LP cascading but produces no audible peak on a BP and
+      // collapses the band to a notch-like attenuation.
+      svf_[0].set_f_q<stmlib::FREQUENCY_FAST>(f, 2.0f + q);
+
+      const float in_sample = stmlib::SoftClip((out[i] + aux[i]) * g);
+      float bp = svf_[0].Process<stmlib::FILTER_MODE_BAND_PASS>(in_sample);
+      bp = stmlib::SoftClip(bp * g);
+
+      out[i] = bp * 0.5f;
+      aux[i] = bp * 0.5f;
+    }
+  }
+
+  void ProcessFilterHP(float envelope, float *out, float *aux, size_t size) {
+    float cutoff_target, q_target, gain_target, stage2_target;
+    ComputeFilterTargets(envelope, &cutoff_target, &q_target, &gain_target,
+                         &stage2_target);
+    MaybeResetFilterState(cutoff_target, q_target, gain_target, stage2_target);
+
+    stmlib::ParameterInterpolator cutoff_mod(&previous_cutoff_, cutoff_target, size);
+    stmlib::ParameterInterpolator q_mod(&previous_q_, q_target, size);
+    stmlib::ParameterInterpolator gain_mod(&previous_gain_, gain_target, size);
+
+    for (size_t i = 0; i < size; ++i) {
+      const float f = std::min(cutoff_mod.Next(), 0.49f);
+      const float q = q_mod.Next();
+      const float g = gain_mod.Next();
+
+      svf_[0].set_f_q<stmlib::FREQUENCY_FAST>(f, 2.0f + q);
+
+      const float in_sample = stmlib::SoftClip((out[i] + aux[i]) * g);
+      float hp = svf_[0].Process<stmlib::FILTER_MODE_HIGH_PASS>(in_sample);
+      hp = stmlib::SoftClip(hp * g);
+
+      out[i] = hp * 0.5f;
+      aux[i] = hp * 0.5f;
     }
   }
 
   Synth synth;
   Delay delay_;
-  stmlib::Svf filter_;
+  stmlib::Svf svf_[2];
   Ensemble ensemble_;
   Reverb reverb_;
   Chorus chorus_;
@@ -211,10 +319,13 @@ private:
 
   NoteFilter note_filter_;
 
-  float filter_in_buffer_[kMaxBlockSize];
-  float filter_out_buffer_[kMaxBlockSize];
+  float previous_cutoff_;
+  float previous_q_;
+  float previous_gain_;
+  float previous_stage2_gain_;
   float fnote_;
   bool clear_fx_;
+  bool bank_changed_;
   bool previous_strum;
 
   DISALLOW_COPY_AND_ASSIGN(ChordStringSynth);
