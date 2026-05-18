@@ -32,6 +32,7 @@
 #include "stmlib/stmlib.h"
 
 #include "stmlib/dsp/dsp.h"
+#include "stmlib/dsp/parameter_interpolator.h"
 
 #include "rings/dsp/fx/fx_engine.h"
 #include "rings/resources.h"
@@ -200,16 +201,17 @@ class Delay {
  public:
   Delay() { }
   ~Delay() { }
-  
+
   void Init(uint16_t* buffer) {
     engine_.Init(buffer);
-    delay_line_.Init(buffer);
     delay_time_ = 0.0f;
     feedback_ = 0.0f;
+    lp_coefficient_ = 0.7f;
+    ResetState();
     engine_.SetLFOFrequency(LFO_1, 0.3f / 48000.0f);
     engine_.SetLFOFrequency(LFO_2, 0.05f / 48000.0f);
   }
-  
+
   void Process(float* left, float* right, size_t size) {
     const size_t reserved = buffer_size - 1;
     typedef E::Reserve<reserved, E::Reserve<reserved> > Memory;
@@ -217,58 +219,43 @@ class Delay {
     E::DelayLine<Memory, 1> line_r;
     E::Context c;
 
+    const float new_offset = static_cast<float>(reserved) * MapTime(delay_time_);
+    stmlib::ParameterInterpolator offset_l(&previous_offset_l_, new_offset, size);
+    stmlib::ParameterInterpolator offset_r(&previous_offset_r_, new_offset, size);
+
     while (size--) {
       engine_.Start(&c);
-      float del_out = 0.0f;
-      float mix_l = 0.0f;
-      float mix_r = 0.0f;
-     
-      c.Load(0.0f);
-      c.Interpolate(line_l, static_cast<float>(reserved) * delay_time_, LFO_1, 0.5f, 0.5f);
-      //c.ReadHermite(line_l, static_cast<float>(reserved) * delay_time_, 0.5f);
-      c.Write(del_out);
-      c.Read(*left, 0.5f);
-      c.Write(mix_l, 0.0f);
+      float del_out_l = 0.0f;
+      float del_out_r = 0.0f;
+      float damped_l = 0.0f;
+      float damped_r = 0.0f;
 
-      c.Load(del_out * feedback_);
+      c.Load(0.0f);
+      c.Interpolate(line_l, offset_l.Next(), LFO_1, 0.5f, 0.5f);
+      c.Write(del_out_l);
+      c.Lp(feedback_state_l_, lp_coefficient_);
+      c.Hp(dc_state_l_, 0.001f);
+      c.Write(damped_l);
+
+      const float fb_l = stmlib::SoftClip(damped_l * feedback_);
+      c.Load(fb_l);
       c.Read(*left, 0.5f);
       c.Write(line_l, 1.0f);
-      
-      *left = mix_l;
 
       c.Load(0.0f);
-      c.Interpolate(line_r, static_cast<float>(reserved) * delay_time_, LFO_1, 0.5f, 0.5f);
-      //c.ReadHermite(line_r, static_cast<float>(reserved) * delay_time_, 0.5f);
-      c.Write(del_out);
-      c.Read(*right, 0.5f);
-      c.Write(mix_r, 0.0f);
+      c.Interpolate(line_r, offset_r.Next(), LFO_1, 0.5f, 0.5f);
+      c.Write(del_out_r);
+      c.Lp(feedback_state_r_, lp_coefficient_);
+      c.Hp(dc_state_r_, 0.001f);
+      c.Write(damped_r);
 
-      c.Load(del_out * feedback_);
+      const float fb_r = stmlib::SoftClip(damped_r * feedback_);
+      c.Load(fb_r);
       c.Read(*right, 0.5f);
       c.Write(line_r, 1.0f);
-      
-      *right = mix_r;
 
-      left++;
-      right++;
-    }
-  }
-
-  void Process2(float* left, float* right, size_t size) {
-
-    float del_out, mix_l;
-
-    while (size--) {
-      //del_out = delay_line_.Decompress(delay_line_.Read((32767.0f / 2.0f) * delay_time_)) * 0.5f;
-      del_out = delay_line_.Decompress(delay_line_.Read(static_cast<int32_t>(float(buffer_size - 1) * delay_time_))) * 0.5f;
-      mix_l = del_out + ((*left + *right) * 0.25f);
-
-      //c.Load(del_out * feedback_);
-      float feedback = del_out * feedback_;
-      delay_line_.Write(delay_line_.Compress(feedback + ((*left + *right) * 0.25f)));
-      
-      *left = mix_l;
-      *right = mix_l;
+      *left = del_out_l + *left * 0.5f;
+      *right = del_out_r + *right * 0.5f;
 
       left++;
       right++;
@@ -276,58 +263,88 @@ class Delay {
   }
 
   void Process3(float* left, float* right, size_t size) {
-    const size_t reserved = 24576; //(buffer_size * 2) - 1;
+    const size_t reserved = 24576;
     typedef E::Reserve<reserved> Memory;
     E::DelayLine<Memory, 0> line_l;
     E::Context c;
 
+    const float new_offset = static_cast<float>(reserved) * MapTime(delay_time_);
+    stmlib::ParameterInterpolator offset(&previous_offset_3_, new_offset, size);
+
     while (size--) {
       engine_.Start(&c);
       float del_out = 0.0f;
-      float mix_l = 0.0f;
-     
-      c.Load(0.0f);
-      c.Interpolate(line_l, static_cast<float>(reserved) * delay_time_, LFO_2, 0.5f, 0.5f);
-      //c.ReadHermite(line_l, static_cast<float>(reserved) * delay_time_, 0.5f);
-      c.Write(del_out);
-      c.Read(*left, 0.25f);
-      c.Read(*right, 0.25f);
-      c.Write(mix_l, 0.0f);
+      float damped = 0.0f;
 
-      c.Load(del_out * feedback_);
+      c.Load(0.0f);
+      c.Interpolate(line_l, offset.Next(), LFO_2, 0.5f, 0.5f);
+      c.Write(del_out);
+      c.Lp(feedback_state_3_, lp_coefficient_);
+      c.Hp(dc_state_3_, 0.001f);
+      c.Write(damped);
+
+      const float fb = stmlib::SoftClip(damped * feedback_);
+      c.Load(fb);
       c.Read(*left, 0.25f);
       c.Read(*right, 0.25f);
       c.Write(line_l, 1.0f);
-      
-      *left = mix_l;
-      *right = mix_l;
+
+      const float mix = del_out + (*left + *right) * 0.25f;
+      *left = mix;
+      *right = mix;
 
       left++;
       right++;
     }
   }
-  
+
   inline void set_delay_time(float delay) {
     delay_time_ = delay;
   }
-  
+
   inline void set_feedback(float feedback) {
     feedback_ = feedback;
   }
 
   inline void Clear() {
     engine_.Clear();
-    delay_line_.Reset();
+    ResetState();
   }
-  
+
  private:
+  static inline float MapTime(float x) {
+    return x;
+  }
+
+  void ResetState() {
+    previous_offset_l_ = 0.0f;
+    previous_offset_r_ = 0.0f;
+    previous_offset_3_ = 0.0f;
+    feedback_state_l_ = 0.0f;
+    feedback_state_r_ = 0.0f;
+    feedback_state_3_ = 0.0f;
+    dc_state_l_ = 0.0f;
+    dc_state_r_ = 0.0f;
+    dc_state_3_ = 0.0f;
+  }
+
   typedef FxEngine<32768, FORMAT_16_BIT> E;
   E engine_;
-  
+
   float delay_time_;
   float feedback_;
-  DelayLine<uint16_t, buffer_size> delay_line_;
-  
+  float lp_coefficient_;
+
+  float previous_offset_l_;
+  float previous_offset_r_;
+  float previous_offset_3_;
+  float feedback_state_l_;
+  float feedback_state_r_;
+  float feedback_state_3_;
+  float dc_state_l_;
+  float dc_state_r_;
+  float dc_state_3_;
+
   DISALLOW_COPY_AND_ASSIGN(Delay);
 };
 
