@@ -88,6 +88,13 @@ TB3PoSequencer tb3po;
 uint8_t prev_x_deja_vu = DEJA_VU_OFF;
 float prev_grids_ramp = 0.0f;
 
+// External-clock watchdog (Grids mode). Counts samples since the last rising
+// edge on the T-section clock input; when the gap exceeds ~2× the previous
+// clock period, force the TB-3PO gate off so a stopped upstream sequencer
+// can't latch downstream VCAs/ADSRs open.
+uint32_t t_clock_silence_samples = 0;
+uint32_t t_clock_last_period_samples = kSampleRate / 2;  // 500 ms initial guess
+
 // Default interrupt handlers.
 extern "C" {
 
@@ -519,6 +526,35 @@ void Process(IOBuffer::Block* block, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     float ramp = ramp_buffer[i];
     if (grids_mode) {
+      // External-clock stall watchdog. ramps.master is driven by the T-clock
+      // via ramp_extractor; when that clock stops, the ramp freezes and the
+      // half-cycle trigger that releases tb3po.gate_ never arrives. Adapt the
+      // threshold to ~2× the last observed clock period, clamped so we don't
+      // false-trigger between slow pulses or wait forever at fast tempos.
+      if (block->input_patched[0]) {
+        if (t_clock[i] & GATE_FLAG_RISING) {
+          if (t_clock_silence_samples > 0) {
+            t_clock_last_period_samples = t_clock_silence_samples;
+          }
+          t_clock_silence_samples = 0;
+        } else {
+          uint32_t threshold = t_clock_last_period_samples * 2;
+          if (threshold < static_cast<uint32_t>(kSampleRate / 8)) {
+            threshold = kSampleRate / 8;        // 125 ms floor
+          }
+          if (threshold > static_cast<uint32_t>(kSampleRate * 2)) {
+            threshold = kSampleRate * 2;        // 2 s ceiling
+          }
+          if (t_clock_silence_samples < threshold) {
+            ++t_clock_silence_samples;
+            if (t_clock_silence_samples == threshold) {
+              tb3po.ForceGateOff();
+            }
+          }
+        }
+      } else {
+        t_clock_silence_samples = 0;
+      }
       // ramps.master in Grids mode is the X-section step ramp
       // (grids_pulse_ + master_phase_) / 6, cycling 0→1 once per 16th note.
       // A downward jump signals a step boundary (and the rising X1 edge); a

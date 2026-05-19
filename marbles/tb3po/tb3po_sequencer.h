@@ -41,6 +41,11 @@ class TB3PoSequencer {
   // Clock.
   void Tick(bool reset);          // one Grids "X step" boundary (rising X1 edge)
   void TickHalfCycle();           // half-step (falling X1 edge) — drives gate-off
+  // Release the gate immediately. Used by marbles.cc's external-clock
+  // watchdog: when ramps.master freezes (T-clock silent) the half-cycle
+  // trigger never fires, so gate_ would latch HIGH and downstream VCAs/ADSRs
+  // would never release.
+  void ForceGateOff();
 
   // Per-sample slide IIR (called from the audio loop).
   void StepSlide();

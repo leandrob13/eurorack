@@ -213,6 +213,12 @@ void TB3PoSequencer::TickHalfCycle() {
   }
 }
 
+void TB3PoSequencer::ForceGateOff() {
+  gate_ = false;
+  accent_ = false;
+  gate_off_pending_ = false;
+}
+
 void TB3PoSequencer::StepSlide() {
   if (pitch_volts_ == slide_target_) return;
   pitch_volts_ += kSlideCoef * (slide_target_ - pitch_volts_);
