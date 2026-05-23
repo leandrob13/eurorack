@@ -210,6 +210,11 @@ private:
     } else {
       cutoff_semitones += synth.filter_cv * atten_norm * kFilterDepthSemitones;
     }
+    // SemitonesToRatio uses a ±128-semitone LUT; reading past either end
+    // produces undefined values that wrap the cutoff and cause audible
+    // glitches / spurious filter-closing at extreme settings. Pot (+96) +
+    // env-depth (+84) + CV (+84) can easily blow past +128.
+    CONSTRAIN(cutoff_semitones, -120.0f, 120.0f);
 
     float f0 = NoteToFrequency(synth.tonic);
     float cutoff = f0 * SemitonesToRatio(cutoff_semitones);
