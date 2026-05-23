@@ -89,11 +89,11 @@ class Arpeggiator{
     }
     
     if (mode_ == ARPEGGIATOR_MODE_UP) {
-      direction_ = -1;
+      direction_ = 1;
     }
 
     if (mode_ == ARPEGGIATOR_MODE_DOWN) {
-      direction_ = 1;
+      direction_ = -1;
     }
     
     note_ += direction_;

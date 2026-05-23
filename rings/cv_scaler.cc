@@ -237,13 +237,15 @@ void CvScaler::Read(Patch* patch, PerformanceState* performance_state) {
   CONSTRAIN(genre_, 0, kNumGenres - 1);
   performance_state->genre = genre_;
 
-  float arp = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_STRUCTURE) - 0.5f;
-  arp += adc_lp_[ADC_CHANNEL_CV_STRUCTURE];    
-  arp *= static_cast<float>(kNumArps - 1);
-  arp_ = static_cast<int32_t>(arp);
-  int32_t half_arps = static_cast<int32_t>(kNumArps / 2);
-  CONSTRAIN(arp_, -1 * half_arps, half_arps);
-  performance_state->arp = arp_;
+  // Unipolar Structure attenuverter + CV: the full CCW→CW sweep drives
+  // the 12-position pattern selector inside ChordStringSynth (mode × octave
+  // range), in the same style as the Plaits chiptune engine. OFF sits at
+  // the CCW extreme — knob fully down disables the arpeggiator.
+  float arp_pattern = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_STRUCTURE);
+  arp_pattern += adc_lp_[ADC_CHANNEL_CV_STRUCTURE];
+  performance_state->arp_active = arp_pattern >= 0.05f;
+  CONSTRAIN(arp_pattern, 0.0f, 1.0f);
+  performance_state->arp_pattern = arp_pattern;
 
   performance_state->envelope = adc_lp_[ADC_CHANNEL_POT_DAMPING];
   performance_state->vca_level = adc_.float_value(ADC_CHANNEL_ATTENUVERTER_DAMPING);

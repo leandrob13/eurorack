@@ -33,7 +33,6 @@ namespace rings {
 
 const int32_t kNumChords = 11;
 const int32_t kNumGenres = 25;
-const int32_t kNumArps = 9;
 
 struct PerformanceState {
   bool strum;
@@ -48,7 +47,8 @@ struct PerformanceState {
   bool gate;
 
   int16_t genre;
-  int16_t arp;
+  bool arp_active;     // Structure attenuverter off-center → arpeggiator on
+  float arp_pattern;   // 0..1, quantized to 12 mode×range patterns downstream
   float envelope; // Damping pot
   float vca_level; // Damping attenuator
   float vca_cv; // Damping CV

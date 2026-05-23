@@ -43,6 +43,7 @@
 #include "rings/dsp/string_synth_voice.h"
 #include "stmlib/dsp/dsp.h"
 #include "stmlib/dsp/filter.h"
+#include "stmlib/dsp/hysteresis_quantizer.h"
 #include "stmlib/dsp/parameter_interpolator.h"
 #include "stmlib/stmlib.h"
 
@@ -179,17 +180,41 @@ private:
   // (`0.5 + 0.025·q`) rounds off the resonance peak from the first stage.
   // Drive gain starts at 1.0 with no signal loss at zero resonance and only
   // attenuates as resonance increases, to keep self-oscillation peaks tame.
+  //
+  // Cutoff math runs entirely in semitone space:
+  //   pot   → 120·(filter_frequency − 0.2)  semitones above tonic
+  //   env   → envelope · normalized_atten · 60 semitones (≈5 octaves at peak)
+  //   CV    → unity-gain add (CV·60 semitones) when envelope is on
+  //   no-env → attenuverter goes back on CV (CV · normalized_atten · 60)
+  // Attenuverter is normalized by the LAW_QUADRATIC_BIPOLAR peak (≈3.3) so
+  // "full attenuverter" maps cleanly to the chosen depth.
   void ComputeFilterTargets(float envelope_value, float *cutoff_target,
                             float *q_target, float *gain_target,
                             float *stage2_target) {
+    const float kAttenPeak = 3.3f;            // see LAW_QUADRATIC_BIPOLAR
+    const float kInvAttenPeak = 1.0f / kAttenPeak;
+    const float kFilterDepthSemitones = 84.0f; // 7 octaves of sweep
+
+    // Linearise the attenuverter: cv_scaler applies LAW_QUADRATIC_BIPOLAR
+    // (filter_amount = sign(p)·p²·4·3.3), which squashes response near
+    // center — 1/4 of physical travel resolves to only ~6% of depth. We
+    // undo the square with a sqrt so depth tracks knob travel linearly.
+    float atten_abs = fabsf(synth.filter_amount) * kInvAttenPeak;
+    float atten_norm = sqrtf(atten_abs);
+    if (synth.filter_amount < 0.0f) atten_norm = -atten_norm;
+
+    float cutoff_semitones = 120.0f * (synth.filter_frequency - 0.2f);
+    if (synth.active_envelope) {
+      cutoff_semitones += envelope_value * atten_norm * kFilterDepthSemitones;
+      cutoff_semitones += synth.filter_cv * kFilterDepthSemitones;
+    } else {
+      cutoff_semitones += synth.filter_cv * atten_norm * kFilterDepthSemitones;
+    }
+
     float f0 = NoteToFrequency(synth.tonic);
-    float cutoff = f0 * SemitonesToRatio(120.0f * (synth.filter_frequency - 0.2f));
-    float modulation = synth.active_envelope
-                           ? (envelope_value + synth.filter_cv) * synth.filter_amount
-                           : synth.filter_cv * synth.filter_amount;
-    float total = cutoff + modulation;
-    CONSTRAIN(total, 0.0f, 1.0f);
-    *cutoff_target = total;
+    float cutoff = f0 * SemitonesToRatio(cutoff_semitones);
+    CONSTRAIN(cutoff, 0.0f, 1.0f);
+    *cutoff_target = cutoff;
 
     float resonance = synth.filter_resonance;
     CONSTRAIN(resonance, 0.0f, 1.0f);
@@ -309,6 +334,10 @@ private:
   Synth synth;
   Delay delay_;
   stmlib::Svf svf_[2];
+  // 12-step hysteresis quantizer driving arpeggiator mode×range selection,
+  // ported from plaits/dsp/engine2/chiptune_engine: pattern/3 → mode,
+  // 1<<(pattern%3) → range (1, 2, or 4 octaves).
+  stmlib::HysteresisQuantizer2 arp_pattern_selector_;
   Ensemble ensemble_;
   Reverb reverb_;
   Chorus chorus_;

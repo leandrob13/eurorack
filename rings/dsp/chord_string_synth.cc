@@ -49,6 +49,10 @@ void ChordStringSynth::Init(uint16_t* reverb_buffer) {
   synth.filter_resonance = 0.0f;
   synth.envelope.Init();
   synth.arp.Init();
+  // 8 patterns = 4 modes × 2 octave ranges (1, 2). The 4-octave range from
+  // the Plaits chiptune selector is intentionally dropped — it pushes notes
+  // well above the chord-string-synth's musical register.
+  arp_pattern_selector_.Init(8, 0.075f, false);
 
   svf_[0].Init();
   svf_[1].Init();
@@ -110,23 +114,25 @@ void ChordStringSynth::Process(
   synth.active_envelope = performance_state.envelope <= 0.98f;
   synth.delay_time = performance_state.delay_time;
   synth.feedback = performance_state.feedback + 0.5f;
-  bool arpeggiated = performance_state.arp != 0;
+  bool arpeggiated = performance_state.arp_active;
 
   float envelope = performance_state.envelope;
 
   if (!arpeggiated) synth.arp.Reset();
   if (performance_state.gate) {
     envelope_flag = previous_strum ? envelope_flag : ENVELOPE_FLAG_RISING_EDGE;
-    
+
     if (arpeggiated && performance_state.strum) {
-      int range = performance_state.arp < 0 ? 1 : 2;
-      int mode = performance_state.arp < 0 ? -1 * performance_state.arp : performance_state.arp;
-      synth.arp.set_mode(ArpeggiatorMode(mode - 1));
-      synth.arp.set_range(range);
+      // Plaits chiptune-style selection, narrowed to 8 patterns = 4 modes
+      // × 2 octave ranges (1, 2). See plaits/dsp/engine2/chiptune_engine.cc
+      // for the original 12-pattern layout.
+      int pattern = arp_pattern_selector_.Process(performance_state.arp_pattern);
+      synth.arp.set_mode(ArpeggiatorMode(pattern / 2));
+      synth.arp.set_range(1 << (pattern % 2));
       synth.arp.Clock(chord_size);
     }
-    envelope_flag |= ENVELOPE_FLAG_GATE;  
-  } 
+    envelope_flag |= ENVELOPE_FLAG_GATE;
+  }
   previous_strum = performance_state.gate;
   bool clocked = arpeggiated && !performance_state.internal_strum;
 
@@ -149,8 +155,13 @@ void ChordStringSynth::Process(
   for (int32_t i = 0; i < chord_size; ++i) {
     int index = clocked ? cn : i;
     float n = genre_chords[0][synth.genre][chord][index];
-    float oct_down = (synth.genre < 2) ? 12.0f : 24.0f; 
+    float oct_down = (synth.genre < 2) ? 12.0f : 24.0f;
     notes[i].note = n - oct_down * (1 - synth.arp.octave());
+    // Arpeggio sits an extra octave below the chord-organ register —
+    // the 3-octave Plaits-style range (1/2/4) sends notes much higher
+    // than the legacy 2-range scheme did, so we pull the baseline down
+    // to keep top-of-range octaves musically usable.
+    if (clocked) notes[i].note -= 12.0f;
     notes[i].amplitude = n >= 0.0f && n <= 17.0f ? 1.0f : 0.7f;
   }
 
@@ -184,11 +195,11 @@ void ChordStringSynth::Process(
   }
 
   if (bank_ == 2) {
-    ProcessFilterLP(envelope_value * 0.15f, out, aux, size);
+    ProcessFilterLP(envelope_value, out, aux, size);
   } else if (bank_ == 3) {
-    ProcessFilterBP(envelope_value * 0.15f, out, aux, size);
+    ProcessFilterBP(envelope_value, out, aux, size);
   } else if (bank_ == 4) {
-    ProcessFilterHP(envelope_value * 0.15f, out, aux, size);
+    ProcessFilterHP(envelope_value, out, aux, size);
   }
   
   if (clear_fx_) {
