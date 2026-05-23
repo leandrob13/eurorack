@@ -224,13 +224,31 @@ wraps = 2 Grids steps). marbles.cc detects step boundaries by watching the
 `ramps.master` step ramp:
 
 - A downward jump (ramp < prev_ramp − 0.5) marks the rising X1 edge →
-  `tb3po.Tick(reset)`.
+  `tb3po.Tick(tb3po_reset_pending)`.
 - A 0→1 crossing of 0.5 marks the falling X1 edge / half-step →
   `tb3po.TickHalfCycle()` (drives gate-off).
 - `tb3po.StepSlide()` runs every sample to advance the slide IIR.
 
+Reset latching: marbles.cc seeds `bool tb3po_reset_pending = grids_reset;`
+*before* the per-sample loop and clears it on the first step boundary. A
+reset that arrives mid-block is therefore consumed on the next step boundary
+— even if that boundary lands in a later block — instead of being lost when
+the for-loop ends.
+
 No changes were needed in `t_generator` for the clock signal — `ramp_buffer`
 is already exposed at the marbles.cc level.
+
+### External-clock stall watchdog
+
+When the T-clock input is patched, the per-sample loop tracks
+`t_clock_silence_samples` (samples since the last `GATE_FLAG_RISING` on
+`t_clock`). The threshold is set to `2 × t_clock_last_period_samples`,
+clamped between 125 ms (`kSampleRate / 8`) and 2 s (`kSampleRate * 2`).
+When silence reaches the threshold, `tb3po.ForceGateOff()` fires once so a
+stopped upstream sequencer can't leave the TB-3PO gate latched into a
+downstream VCA/ADSR. The next rising edge resets the counter and refreshes
+the period estimate. When the T-clock is unpatched, the counter is held at
+zero (internal-clock mode never stalls).
 
 ### Outputs (Grids mode only)
 
@@ -252,13 +270,16 @@ overwritten before the DAC write.
 |---|---|---|
 | X SPREAD knob | `density_encoder` | `round(spread * 14)` → 0..14 (treated as −7..+7) |
 | X SPREAD CV  | `density_cv`      | `round(cv * 7)` → −7..+7 offset |
-| X BIAS knob+CV | `transpose`     | `(bias − 0.5) * 24` → ±12 scale degrees |
-| LENGTH knob (Deja Vu Length) | `num_steps` | Shared with Grids Euclidean length: `deja_vu_length_quantizer.Lookup(loop_length, …)` → 1..16 |
-| X STEPS CV (rising edge) | T+X reset | Resets both Grids step pointer and TB-3PO step 0 |
-| X DEJA VU switch | `lock_seed`   | `ON\|LOCKED → OFF` → reseed; `OFF → ON\|LOCKED` → commit + flash save |
+| X BIAS knob | `transpose` (knob component) | `round((unscaled_pot − 0.5) * 36)` semitones, clamped ±18 (3 octaves) |
+| X BIAS CV | `transpose` (CV component) | `cv * 60` semitones (1 V/oct on the default uncalibrated −2.0 cv() scale), clamped ±18; summed with the knob component and passed as a float semitone count to `set_transpose()` |
+| X STEPS knob + CV | `num_steps` | `1 + round(parameters[ADC_CHANNEL_X_STEPS] * 31)`, clamped to `TB3PoSequencer::kMaxSteps` → 1..32. The X_STEPS HysteresisFilter (0.02) is wider than one step (1/31 ≈ 0.032), so the count is stable |
+| DEJA VU CV (rising edge) | T+X reset | `hidden_gates[ADC_CHANNEL_DEJA_VU_AMOUNT] & GATE_FLAG_RISING` resets both the Grids step pointer and TB-3PO step 0 (via `tb3po_reset_pending` latching, see Clocking) |
+| X DEJA VU switch | `lock_seed` | `ON\|LOCKED → OFF` → reseed; `OFF → ON\|LOCKED` → commit + flash save |
 | X SCALE (existing X selector) | scale lookup | reuses `state.x_scale` |
-| X RANGE switch | unused on X2 | pitch is always 1V/oct |
-| X STEPS knob | unused | only X STEPS CV is consumed (as reset) |
+| X RANGE switch | unused | TB-3PO pitch is always 1 V/oct on X2 |
+| LENGTH knob (`DEJA VU LENGTH`) | unused by TB-3PO | Drives the Grids Euclidean step count only; TB-3PO length comes from `X STEPS` |
+| Main panel DEJA VU knob | unused by TB-3PO | Consumed by the T-section in Grids mode (bipolar around 12 o'clock: CCW = drum chaos / Euclidean T2 fills, CW = Euclidean rotation). `tb3po` does not read `deja_vu_raw` |
+| Main panel DEJA VU CV jack | reset only | In Grids mode `parameters[ADC_CHANNEL_DEJA_VU_AMOUNT]` is forced to pot-only so the CV's analogue value doesn't contaminate chaos / rotation or the UI lock deadband — the jack is consumed purely as a reset trigger |
 
 ### Seed Persistence
 
