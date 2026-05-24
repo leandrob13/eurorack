@@ -32,7 +32,7 @@ Warps Symbiote extends the stock meta-modulator with a bank of additional audio 
 | `FEATURE_MODE_REVERB` | `ProcessReverb` | Griesinger/Dattorro topology, voicing selected by `carrier_shape` |
 | `FEATURE_MODE_FREQUENCY_SHIFTER` | `ProcessFreqShifter` | Hilbert-based; pitch-shifter variant commented out in the dispatch |
 | `FEATURE_MODE_PHASER` | `ProcessPhaser` | Cascaded-allpass phaser (4/6/8/12 stages selected by `carrier_shape`) |
-| `FEATURE_MODE_CHEBYSCHEV` | `ProcessChebyschev` | Modulator pre-warps `modulation_parameter`/`algorithm` before dispatch |
+| `FEATURE_MODE_PITCH_SHIFTER` | `ProcessPitchShifter` | 2-tap SOLA shifter; shares the FX buffer with reverb/ensemble |
 | `FEATURE_MODE_DOPPLER` | `ProcessDoppler` | |
 | `FEATURE_MODE_DELAY` | `ProcessDelay` | Owns `delay_buffer_` (independent of the FX buffer) |
 | `FEATURE_MODE_META` | `ProcessMeta` | Stock MI behaviour — the original meta-modulator (default at `Init`) |
@@ -54,7 +54,7 @@ Cross-cutting things to know:
   - `previous_parameters_.modulation_parameter` → `set_time`
   - Input gain is hard-coded to `0.2f`.
   Use `previous_parameters_` (not `parameters_`) so the values are coherent with the rendered audio block.
-- **`reset_fx` clears `reverb`, `ensemble`, and `phaser`** at the top of `Modulator::Process()` — set it from the UI when switching modes or freezing-then-releasing.
+- **`reset_fx` clears `reverb`, `ensemble`, `phaser`, and `pitch_shifter`** at the top of `Modulator::Process()` — set it from the UI when switching modes or freezing-then-releasing.
 - **Phaser control mapping** in `ProcessPhaser` (`dsp/fx/phaser.h` is self-contained, no shared FX buffer):
   - LEVEL CVs → `ApplyAmplification(..., raw_level_cv, ..., true)` — input VCAs. `cv_scaler` forces `raw_level_cv = 0.6f` when the jack is unpatched, so audio passes without a patch cable. Same idiom as `DUAL_FILTER` mode.
   - `previous_parameters_.raw_level_pot[0]` → `set_amount` (dry/wet mix)
@@ -63,6 +63,14 @@ Cross-cutting things to know:
   - `previous_parameters_.modulation_parameter` → `set_depth` (LFO depth around the center; ±1 octave at full)
   - `parameters_.carrier_shape` → both `set_stages` (4/6/8/12 stage cascade) **and** the per-voicing center frequency via `kVoicingCenter` in `ProcessPhaser`.
   See [docs/phaser_plan.md](docs/phaser_plan.md) for the original design intent.
+- **Pitch shifter control mapping** in `ProcessPitchShifter` ([dsp/fx/pitch_shifter.h](dsp/fx/pitch_shifter.h) — 2-tap SOLA shifter that **shares the 32k uint16_t FX buffer** with `reverb`/`ensemble`; mutually exclusive at runtime):
+  - LEVEL CVs → `ApplyAmplification(..., raw_level_cv, ..., true)` — input VCAs, same idiom as phaser/dual filter.
+  - `previous_parameters_.raw_level_pot[0]` → `set_mix` (dry/wet)
+  - `previous_parameters_.raw_level_pot[1]` → `set_feedback` (×0.85; regenerative — and the *only* shimmer engine in `VOICING_SHIMMER`)
+  - `previous_parameters_.raw_algorithm` → coarse pitch, mapped (pot − 0.5) × 24 = ±12 semitones
+  - `previous_parameters_.modulation_parameter` → fine detune, ±0.5 semitone (≈ ±50 ¢)
+  - `parameters_.carrier_shape` (0..3) → voicing: detune / continuous / quantized (5ths/4ths/8ves) / shimmer
+  See [docs/pitch_shifter_plan.md](docs/pitch_shifter_plan.md).
 - **Internal FX-mode sample rate is 48 kHz.** The reverb hard-codes `0.5f / 48000.0f` and `0.3f / 48000.0f` for its LFOs in [dsp/fx/reverb.h](dsp/fx/reverb.h). The wider Warps pipeline upsamples for modulation modes via `src_up_`/`src_down2_`, but the FX modes operate at the native codec rate.
 - **`Convert(output, main, aux, 32768.0f, size)`** is the final fixed-point cast at the end of each `Process*` method. Match its argument layout when adding new modes — `main_output` goes to L, `aux_output` to R.
 
@@ -77,18 +85,6 @@ Cross-cutting things to know:
 - Implement smooth SIZE morphing by reserving each line at maximum length and reading via `c.Interpolate(line, size * max_len, scale)` — the FxEngine's fractional reads already give the doppler-on-sweep behaviour for free.
 - 16-bit q15 storage is audible on long quiet tails / freeze — consider `FORMAT_32_BIT` for the longest 2 lines if CPU/RAM allows.
 - Prototype coefficient ranges in Faust (or against `zita-rev1` as a reference) before iterating on firmware.
-
-### Phase vocoder pitch shifter (planned)
-
-[docs/phase_vocoder_port_plan.md](docs/phase_vocoder_port_plan.md) is the design plan for replacing the current naive dual-tap shifter in [dsp/fx/pitch_shifter.h](dsp/fx/pitch_shifter.h) with a CMSIS-DSP–backed phase vocoder, targeting accurate pitch tracking on monophonic and polyphonic input. Key decisions captured there:
-
-- The naive shifter is mathematically correct on steady tones but cannot track real-world pitched material — its window crossfade introduces wobble and pitch wander by design.
-- **Phase 0 first**: confirm `RESERVE_SIZE`/`ENGINE_SIZE` are properly defined (now done) and audition the naive version through the host harness before committing to the PV. If wobble is gone on melodic material, the PV may not be needed.
-- Target architecture: N=256, hop=64 (4× overlap), Hann window, `arm_rfft_fast_f32` from the vendored CMSIS-DSP library (currently not linked into Warps — adding it is a Phase 2 step).
-- Direct bin-shifting with phase-accumulator correction (not time-stretch + resample) — lower latency, simpler memory, ~7 ms acoustic latency.
-- Build it as a new `FEATURE_MODE_PITCH_SHIFTER`; keep the naive shifter intact as a fallback voicing.
-- CPU budget is the tight constraint (~70% F4 at full quality); plan has documented fallbacks (mono PV, frame skipping, N=128) if hardware tests show overruns.
-- Phase 1 mandates a Python/NumPy reference implementation before any embedded work — phase math bugs are otherwise undebuggable on hardware.
 
 ## Source-of-truth ordering
 

@@ -61,6 +61,7 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   df.Init();
   reverb.Init(reverb_buffer);
   ensemble.Init(reverb_buffer);
+  pitch_shifter.Init(reverb_buffer);
   phaser.Init(sample_rate);
 
   previous_parameters_.carrier_shape = 0;
@@ -469,7 +470,7 @@ void Modulator::ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size
   if (shape > 3) shape = 3;
 
   phaser.set_amount(0.5f);                                            // Fixed 50% Mix (Maximal notch depth)
-  phaser.set_feedback(previous_parameters_.raw_level_pot[1] * 0.95f); // LEVEL2 = feedback
+  phaser.set_feedback(previous_parameters_.raw_level_pot[1] * 1.2f);  // LEVEL2 = feedback (high range)
   phaser.set_center(previous_parameters_.modulation_parameter);       // MOD = center
   phaser.set_rate(previous_parameters_.raw_algorithm);                // ALGO = rate
   phaser.set_depth(previous_parameters_.raw_level[0]);                // LEVEL1 (Pot+CV) = depth
@@ -486,38 +487,43 @@ void Modulator::ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size
   previous_parameters_ = parameters_;
 }
 
-void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size) {
+void Modulator::ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
-  float* oversampled_carrier = src_buffer_[0];
-  float* oversampled_modulator = src_buffer_[1];
-  float* oversampled_output = src_buffer_[0];
 
-  ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
+  // LEVEL CVs act as input VCAs (cv_scaler forces raw_level_cv = 0.6f when
+  // a jack is unpatched, so audio still passes). Same idiom as the phaser
+  // and dual filter modes.
+  ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
 
-  // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
-  if (parameters_.carrier_shape) {
-    RenderCarrier(input, carrier, aux_output, size);
+  int32_t voicing = parameters_.carrier_shape;
+  CONSTRAIN(voicing, 0, 3);
+  pitch_shifter.set_voicing(voicing);
+
+  // Coarse pitch: algorithm pot ∈ [0,1] → ±12 semitones.
+  // Fine detune: modulation pot ∈ [0,1] → ±0.5 semitone (full =  ±50¢).
+  const float coarse_st =
+      (previous_parameters_.raw_algorithm - 0.5f) * 24.0f;
+  const float detune_st =
+      (previous_parameters_.modulation_parameter - 0.5f) * 1.0f;
+  pitch_shifter.set_pitch(coarse_st, detune_st);
+
+  pitch_shifter.set_mix(previous_parameters_.raw_level_pot[0]);
+  pitch_shifter.set_feedback(previous_parameters_.raw_level_pot[1] * 0.85f);
+  // Raw mod knob also acts as tone/damping for VOICING_SHIMMER; other
+  // voicings consume it as the detune above and ignore tone_.
+  pitch_shifter.set_tone(previous_parameters_.modulation_parameter);
+
+  for (size_t i = 0; i < size; ++i) {
+    main_output[i] = carrier[i];
+    aux_output[i] = modulator[i];
   }
 
-  src_up2_[0].Process(carrier, oversampled_carrier, size);
-  src_up2_[1].Process(modulator, oversampled_modulator, size);
+  pitch_shifter.Process(main_output, aux_output, size);
 
-  ProcessXmod<ALGORITHM_CHEBYSCHEV>(
-    previous_parameters_.modulation_algorithm,
-    parameters_.modulation_algorithm,
-    previous_parameters_.skewed_modulation_parameter(),
-    parameters_.skewed_modulation_parameter(),
-    oversampled_modulator, // or modulator
-    oversampled_carrier, // or carrier
-    oversampled_output, // or main_output
-    size * kLessOversampling); // or size
-
-  src_down2_[0].Process(oversampled_output, main_output, size * kLessOversampling);
-
-  Convert(output, main_output, aux_output, 16384.0f, size);
+  Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
 }
 
@@ -856,6 +862,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     reverb.Clear();
     ensemble.Reset();
     phaser.Reset();
+    pitch_shifter.Clear();
     reset_fx = false;
   }
 
@@ -881,10 +888,8 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessPhaser(input, output, size);
     break;
 
-  case FEATURE_MODE_CHEBYSCHEV: 
-    parameters_.modulation_parameter = 0.7f + 0.3f * parameters_.modulation_parameter;
-    parameters_.modulation_algorithm = 0.005f + 0.695f * parameters_.modulation_algorithm;
-    ProcessChebyschev(input, output, size);
+  case FEATURE_MODE_PITCH_SHIFTER:
+    ProcessPitchShifter(input, output, size);
     break;
 
   case FEATURE_MODE_DOPPLER:
@@ -920,35 +925,6 @@ inline float Modulator::Xmod<ALGORITHM_XFADE>(
   float fade_in = Interpolate(lut_xfade_in, parameter, 256.0f);
   float fade_out = Interpolate(lut_xfade_out, parameter, 256.0f);
   return x_1 * fade_in + x_2 * fade_out;
-}
-
-template<>
-inline float Modulator::Mod<ALGORITHM_CHEBYSCHEV>(
-    float x, float p) {
-
-  const float att = 0.01f;
-  const float rel = 0.000005f;
-
-  static float envelope_;
-
-  float error = fabs(x) - envelope_;
-  envelope_ += (error > 0.0f ? att : rel) * error;
-  float amp = 0.9f / envelope_;
-
-  const float degree = 6.0f;
-
-  x *= amp;
-  float n = p * degree;
-  float tn1 = x;
-  float tn = 2.0f * x * x - 1;
-  while (n > 1.0) {
-    float temp = tn;
-    tn = 2.0f * x * tn - tn1;
-    tn1 = temp;
-    n--;
-  }
-
-  return (tn1 + (tn - tn1) * n) / amp;
 }
 
 /* static */
@@ -1053,45 +1029,6 @@ inline float Modulator::Xmod<ALGORITHM_COMPARATOR>(
   float b = sequence[x_integral + 1];
 
   return a + (b - a) * x_fractional;
-}
-
-/* static */
-template<>
-inline float Modulator::Xmod<ALGORITHM_CHEBYSCHEV>(
-    float x_1, float x_2, float p_1, float p_2) {
-
-  float x = x_1 + x_2;
-
-  const float att = 1.0f;
-  const float rel = 0.000001f;
-
-  static float envelope_;
-
-  float error = fabs(x) - envelope_;
-  envelope_ += (error > 0.0f ? att : rel) * error;
-
-  const float degree = 14.0f;
-
-  x /= envelope_;
-  x *= p_2;
-
-  float n = p_1 * degree;
-
-  float tn1 = x;
-  float tn = 2.0f * x * x - 1;
-  while (n > 1.0) {
-    float temp = tn;
-    tn = 2.0f * x * tn - tn1;
-    tn1 = temp;
-    n--;
-  }
-
-  x = tn1 + (tn - tn1) * n;
-  x /= p_2;
-
-  x *= envelope_;
-
-  return x;
 }
 
 /* static */

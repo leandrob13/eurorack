@@ -45,6 +45,7 @@
 #include "warps/dsp/fx/reverb.h"
 #include "warps/dsp/fx/ensemble.h"
 #include "warps/dsp/fx/phaser.h"
+#include "warps/dsp/fx/pitch_shifter.h"
 
 namespace warps {
 
@@ -60,6 +61,7 @@ static Reverb reverb;
 static DualFilter df;
 static Ensemble ensemble;
 static Phaser phaser;
+static PitchShifter pitch_shifter;
 
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
@@ -136,7 +138,6 @@ enum XmodAlgorithm {
   ALGORITHM_RING_MODULATION,
   ALGORITHM_XOR,
   ALGORITHM_COMPARATOR,
-  ALGORITHM_CHEBYSCHEV,
   ALGORITHM_BITCRUSHER,
   ALGORITHM_NOP,
   ALGORITHM_LAST
@@ -159,7 +160,7 @@ class Modulator {
 
   void Init(float sample_rate, uint16_t* reverb_buffer);
   void Process(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessFreqShifter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size, FilterConfig config);
@@ -178,7 +179,7 @@ class Modulator {
   inline bool alt_feature_mode() const { return alt_feature_mode_; }
   
   inline void set_feature_mode(FeatureMode feature_mode) { 
-    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER;
+    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER || feature_mode_ == FEATURE_MODE_PITCH_SHIFTER;
     if (is_fx && feature_mode != feature_mode_) {
       reset_fx = true;
     }
