@@ -61,6 +61,7 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   df.Init();
   reverb.Init(reverb_buffer);
   ensemble.Init(reverb_buffer);
+  phaser.Init(sample_rate);
 
   previous_parameters_.carrier_shape = 0;
   previous_parameters_.channel_drive[0] = 0.0f;
@@ -452,45 +453,38 @@ void Modulator::ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t si
   previous_parameters_ = parameters_;
 }
 
-/*void Modulator::ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size) {
+void Modulator::ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
 
-  ApplyAmplification(input, parameters_.channel_drive, aux_output, size, true);
+  // LEVEL CVs act as input VCAs (cv_scaler sets raw_level_cv = 0.6f when the
+  // CV jack is unpatched, so unpatched audio still passes). LEVEL pots are
+  // free for the phaser controls below. Same pattern as DUAL_FILTER mode.
+  ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
 
-  float transpose = 25.0f * previous_parameters_.raw_algorithm;
-  float hysteresis = transpose - transpose_ > 0.0f ? -0.3f : +0.3f;
-  transpose_ = static_cast<uint32_t>(transpose + hysteresis + 0.5f);
+  int32_t shape = parameters_.carrier_shape;
+  if (shape < 0) shape = 0;
+  if (shape > 3) shape = 3;
 
-  if (parameters_.carrier_shape == 0) {
-    pitch_shifter.set_ratio(SemitonesToRatio(-12.0f + transpose));
-  } else if (parameters_.carrier_shape == 1) {
-    float t1 = floor(25.0f * previous_parameters_.raw_algorithm);
-    pitch_shifter.set_ratio(SemitonesToRatio(-12.0f + t1));
-  } else { // if (parameters_.carrier_shape == 2)
-    float octave = floor(4.0f * previous_parameters_.raw_algorithm) - 2.0f;//static_cast<float>(((transpose_ / 6) % 5) - 2);
-    pitch_shifter.set_ratio(SemitonesToRatio(12.0f * octave));
-  }
-  pitch_shifter.set_size(0.7383f);
-  //pitch_shifter.set_size(previous_parameters_.raw_modulation);
+  phaser.set_amount(0.5f);                                            // Fixed 50% Mix (Maximal notch depth)
+  phaser.set_feedback(previous_parameters_.raw_level_pot[1] * 0.95f); // LEVEL2 = feedback
+  phaser.set_center(previous_parameters_.modulation_parameter);       // MOD = center
+  phaser.set_rate(previous_parameters_.raw_algorithm);                // ALGO = rate
+  phaser.set_depth(previous_parameters_.raw_level[0]);                // LEVEL1 (Pot+CV) = depth
+  phaser.set_stages(shape);
 
   for (size_t i = 0; i < size; i++) {
     main_output[i] = carrier[i];
     aux_output[i] = modulator[i];
   }
 
-  pitch_shifter.Process(main_output, aux_output, size);
-
-  for (size_t i = 0; i < size; i++) {
-    main_output[i] = (main_output[i] + carrier[i]) * 0.5f;
-    aux_output[i] = (aux_output[i] + modulator[i]) * 0.5f;
-  }
+  phaser.Process(main_output, aux_output, size);
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
-}*/
+}
 
 void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
@@ -525,42 +519,6 @@ void Modulator::ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t 
 
   Convert(output, main_output, aux_output, 16384.0f, size);
   previous_parameters_ = parameters_;
-}
-
-void Modulator::ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size) {
-  float* carrier = buffer_[0];
-  float* modulator = buffer_[1];
-  float* main_output = buffer_[0];
-  float* aux_output = buffer_[2];
-
-  ApplyAmplification(input, parameters_.channel_drive, aux_output, size, false);
-
-  // If necessary, render carrier. Otherwise, sum signals 1 and 2 for aux out.
-  if (parameters_.carrier_shape) {
-    RenderCarrier(input, carrier, aux_output, size);
-  }
-
-  // make sure it dry: parameter doesn't go to 0.0f apparently
-  float mod_1 = (parameters_.modulation_parameter - 0.05f) / 0.95f;
-  float mod_2 = (previous_parameters_.modulation_parameter - 0.05f) / 0.95f;
-  CONSTRAIN(mod_1, 0.0f, 1.0f);
-  CONSTRAIN(mod_2, 0.0f, 1.0f);
-
-  ProcessXmod<ALGORITHM_BITCRUSHER>(
-        previous_parameters_.modulation_algorithm,
-        parameters_.modulation_algorithm,
-        mod_1,
-        mod_2,
-        carrier,
-        modulator,
-        main_output,
-        aux_output,
-        size);
-
-  // Convert back to integer and clip.
-  Convert(output, main_output, aux_output, 16384.0f, size);
-  previous_parameters_ = parameters_;
-
 }
 
 void Modulator::ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size) {
@@ -897,6 +855,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
   if (reset_fx) {
     reverb.Clear();
     ensemble.Reset();
+    phaser.Reset();
     reset_fx = false;
   }
 
@@ -916,11 +875,10 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
 
   case FEATURE_MODE_FREQUENCY_SHIFTER:
     ProcessFreqShifter(input, output, size);
-    //ProcessPitchShifter(input, output, size);
     break;
 
-  case FEATURE_MODE_BITCRUSHER:
-    ProcessBitcrusher(input, output, size);
+  case FEATURE_MODE_PHASER:
+    ProcessPhaser(input, output, size);
     break;
 
   case FEATURE_MODE_CHEBYSCHEV: 

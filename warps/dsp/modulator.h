@@ -44,7 +44,7 @@
 #include "warps/dsp/filters/dual_filter.h"
 #include "warps/dsp/fx/reverb.h"
 #include "warps/dsp/fx/ensemble.h"
-//#include "warps/dsp/fx/pitch_shifter.h"
+#include "warps/dsp/fx/phaser.h"
 
 namespace warps {
 
@@ -59,7 +59,7 @@ const float kXmodCarrierGain = 0.5f;
 static Reverb reverb;
 static DualFilter df;
 static Ensemble ensemble;
-//static PitchShifter pitch_shifter;
+static Phaser phaser;
 
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
@@ -161,12 +161,11 @@ class Modulator {
   void Process(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessChebyschev(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessFreqShifter(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessBitcrusher(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDualFilter(ShortFrame* input, ShortFrame* output, size_t size, FilterConfig config);
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size);
-  //void ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
@@ -179,7 +178,7 @@ class Modulator {
   inline bool alt_feature_mode() const { return alt_feature_mode_; }
   
   inline void set_feature_mode(FeatureMode feature_mode) { 
-    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY;
+    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER;
     if (is_fx && feature_mode != feature_mode_) {
       reset_fx = true;
     }
@@ -399,7 +398,9 @@ class Modulator {
   stmlib::OnePole filter_[4];
 
   /* everything that follows will be used as delay buffer */
-  ShortFrame delay_buffer_[8192+4096];  
+  // Trimmed by 64 ShortFrames (256 B) to free RAM for the Phaser instance.
+  // DELAY_SIZE recomputes automatically; max delay loses ~0.7 ms at 96 kHz.
+  ShortFrame delay_buffer_[8192+4096-64];
   float internal_modulation_[kMaxBlockSize];
   float buffer_[3][kMaxBlockSize];
   float src_buffer_[2][kMaxBlockSize * kOversampling];

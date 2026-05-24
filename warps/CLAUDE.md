@@ -31,7 +31,7 @@ Warps Symbiote extends the stock meta-modulator with a bank of additional audio 
 | `FEATURE_MODE_ENSEMBLE` | `ProcessEnsemble` | Shares the FX buffer with `reverb` |
 | `FEATURE_MODE_REVERB` | `ProcessReverb` | Griesinger/Dattorro topology, voicing selected by `carrier_shape` |
 | `FEATURE_MODE_FREQUENCY_SHIFTER` | `ProcessFreqShifter` | Hilbert-based; pitch-shifter variant commented out in the dispatch |
-| `FEATURE_MODE_BITCRUSHER` | `ProcessBitcrusher` | |
+| `FEATURE_MODE_PHASER` | `ProcessPhaser` | Cascaded-allpass phaser (4/6/8/12 stages selected by `carrier_shape`) |
 | `FEATURE_MODE_CHEBYSCHEV` | `ProcessChebyschev` | Modulator pre-warps `modulation_parameter`/`algorithm` before dispatch |
 | `FEATURE_MODE_DOPPLER` | `ProcessDoppler` | |
 | `FEATURE_MODE_DELAY` | `ProcessDelay` | Owns `delay_buffer_` (independent of the FX buffer) |
@@ -54,7 +54,15 @@ Cross-cutting things to know:
   - `previous_parameters_.modulation_parameter` → `set_time`
   - Input gain is hard-coded to `0.2f`.
   Use `previous_parameters_` (not `parameters_`) so the values are coherent with the rendered audio block.
-- **`reset_fx` clears both `reverb` and `ensemble`** at the top of `Modulator::Process()` — set it from the UI when switching modes or freezing-then-releasing.
+- **`reset_fx` clears `reverb`, `ensemble`, and `phaser`** at the top of `Modulator::Process()` — set it from the UI when switching modes or freezing-then-releasing.
+- **Phaser control mapping** in `ProcessPhaser` (`dsp/fx/phaser.h` is self-contained, no shared FX buffer):
+  - LEVEL CVs → `ApplyAmplification(..., raw_level_cv, ..., true)` — input VCAs. `cv_scaler` forces `raw_level_cv = 0.6f` when the jack is unpatched, so audio passes without a patch cable. Same idiom as `DUAL_FILTER` mode.
+  - `previous_parameters_.raw_level_pot[0]` → `set_amount` (dry/wet mix)
+  - `previous_parameters_.raw_level_pot[1]` → `set_feedback` (×0.9 ceiling; inverted internally for the classic swirl)
+  - `previous_parameters_.raw_algorithm` → `set_rate` (LFO speed, exp-mapped 0.1 → 6 Hz)
+  - `previous_parameters_.modulation_parameter` → `set_depth` (LFO depth around the center; ±1 octave at full)
+  - `parameters_.carrier_shape` → both `set_stages` (4/6/8/12 stage cascade) **and** the per-voicing center frequency via `kVoicingCenter` in `ProcessPhaser`.
+  See [docs/phaser_plan.md](docs/phaser_plan.md) for the original design intent.
 - **Internal FX-mode sample rate is 48 kHz.** The reverb hard-codes `0.5f / 48000.0f` and `0.3f / 48000.0f` for its LFOs in [dsp/fx/reverb.h](dsp/fx/reverb.h). The wider Warps pipeline upsamples for modulation modes via `src_up_`/`src_down2_`, but the FX modes operate at the native codec rate.
 - **`Convert(output, main, aux, 32768.0f, size)`** is the final fixed-point cast at the end of each `Process*` method. Match its argument layout when adding new modes — `main_output` goes to L, `aux_output` to R.
 
