@@ -143,6 +143,9 @@ class PitchShifter {
     stmlib::ParameterInterpolator ratio_l(&ratio_l_, target_ratio_l_, size);
     stmlib::ParameterInterpolator ratio_r(&ratio_r_, target_ratio_r_, size);
 
+    // ~0.17 cents — well below audibility but large enough to catch the
+    // exact-1.0 ratio used by the chromatic-0 snap of the quantized voicing.
+    const float kUnisonEps = 1.0e-4f;
     const float mix = mix_;
     const float fa = feedback_amount_;
     // Damping LP coefficient in the feedback path; 1.0 = pass-through.
@@ -179,10 +182,17 @@ class PitchShifter {
       const float w0r = HannLut_(t0r);
       const float w1r = HannLut_(t1r);
 
-      const float yl = ReadInterp_(wp,         t0l + kMinOffset) * w0l
-                     + ReadInterp_(wp,         t1l + kMinOffset) * w1l;
-      const float yr = ReadInterp_(wp + kHalf, t0r + kMinOffset) * w0r
-                     + ReadInterp_(wp + kHalf, t1r + kMinOffset) * w1r;
+      // Bypass the shifter math when the per-channel ratio is effectively
+      // 1.0 — the two-tap mix would otherwise comb-filter the dry signal
+      // on the chromatic-0 snap of the quantized voicing.
+      const bool unison_l = (rl > 1.0f - kUnisonEps) & (rl < 1.0f + kUnisonEps);
+      const bool unison_r = (rr > 1.0f - kUnisonEps) & (rr < 1.0f + kUnisonEps);
+      const float yl = unison_l ? *left
+          : (ReadInterp_(wp, t0l + kMinOffset) * w0l
+           + ReadInterp_(wp, t1l + kMinOffset) * w1l);
+      const float yr = unison_r ? *right
+          : (ReadInterp_(wp + kHalf, t0r + kMinOffset) * w0r
+           + ReadInterp_(wp + kHalf, t1r + kMinOffset) * w1r);
 
       // 1-pole LP in the feedback loop (active in shimmer; k_lp=1 elsewhere
       // collapses this to fb = y, preserving non-shimmer behaviour).
@@ -212,8 +222,11 @@ class PitchShifter {
   // enough to keep the flutter rate inaudible on transients.
   static const int32_t kWindow = 2048;
 
-  // Keep the two interpolated samples strictly behind the write head.
+  // Hermite reads 4 samples: one *newer* than the integer offset and two
+  // *older*. With a minimum integer offset of 2, the newer tap lands at
+  // offset 1 (the just-previous write), which is safe.
   static const int32_t kMinOffset = 2;
+
 
   static inline uint16_t Compress_(float v) {
     return static_cast<uint16_t>(
@@ -246,19 +259,31 @@ class PitchShifter {
     return s * s;
   }
 
-  // Linear-interpolated read at `offset` samples behind `write_ptr`,
-  // confined to the half-buffer addressed by `base` ∈ {0, kHalf}.
+  // 4-point Hermite (Catmull-Rom) interpolated read at `offset` samples
+  // behind `write_ptr`, confined to the half-buffer addressed by
+  // `base` ∈ {0, kHalf}. Hermite preserves HF content much better than
+  // linear interpolation, especially on down-shifts where linear aliases.
   inline float ReadInterp_(int32_t base_plus_wp, float offset) const {
     MAKE_INTEGRAL_FRACTIONAL(offset);
-    // `base_plus_wp` already includes the write pointer; we subtract the
-    // tap offset to walk back in time, then mask within the half.
-    int32_t i0 = (base_plus_wp - offset_integral) & kBufferMask;
-    int32_t i1 = (base_plus_wp - offset_integral - 1) & kBufferMask;
-    // Re-apply base (preserved by mask since kHalf = mask+1 is the bank).
     const int32_t bank = base_plus_wp & ~kBufferMask;
-    const float a = Decompress_(buffer_[bank | i0]);
-    const float b = Decompress_(buffer_[bank | i1]);
-    return a + (b - a) * offset_fractional;
+    // Four taps walking older as the offset increases: ym = one *newer*
+    // than the integer offset, y0 = the integer offset itself, y1/y2 = one
+    // and two samples *older*. With kMinOffset=2, ym always lands at
+    // offset ≥ 1 — safely behind the freshly-written sample.
+    const int32_t im = (base_plus_wp - offset_integral + 1) & kBufferMask;
+    const int32_t i0 = (base_plus_wp - offset_integral)     & kBufferMask;
+    const int32_t i1 = (base_plus_wp - offset_integral - 1) & kBufferMask;
+    const int32_t i2 = (base_plus_wp - offset_integral - 2) & kBufferMask;
+    const float ym = Decompress_(buffer_[bank | im]);
+    const float y0 = Decompress_(buffer_[bank | i0]);
+    const float y1 = Decompress_(buffer_[bank | i1]);
+    const float y2 = Decompress_(buffer_[bank | i2]);
+    const float t = offset_fractional;
+    const float c0 = y0;
+    const float c1 = 0.5f * (y1 - ym);
+    const float c2 = ym - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
+    const float c3 = 0.5f * (y2 - ym) + 1.5f * (y0 - y1);
+    return ((c3 * t + c2) * t + c1) * t + c0;
   }
 
   uint16_t* buffer_;
