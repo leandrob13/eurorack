@@ -61,8 +61,9 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   df.Init();
   reverb.Init(reverb_buffer);
   ensemble.Init(reverb_buffer);
-  pitch_shifter.Init(reverb_buffer);
+  // pitch_shifter.Init(reverb_buffer);  // replaced by tremolo
   phaser.Init(sample_rate);
+  tremolo.Init(sample_rate);
 
   previous_parameters_.carrier_shape = 0;
   previous_parameters_.channel_drive[0] = 0.0f;
@@ -487,45 +488,69 @@ void Modulator::ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size
   previous_parameters_ = parameters_;
 }
 
-void Modulator::ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size) {
+void Modulator::ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
   float* main_output = buffer_[0];
   float* aux_output = buffer_[2];
 
   // LEVEL CVs act as input VCAs (cv_scaler forces raw_level_cv = 0.6f when
-  // a jack is unpatched, so audio still passes). Same idiom as the phaser
-  // and dual filter modes.
+  // unpatched). Same idiom as phaser / pitch shifter.
   ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
 
-  int32_t voicing = parameters_.carrier_shape;
-  CONSTRAIN(voicing, 0, 3);
-  pitch_shifter.set_voicing(voicing);
+  int32_t shape = parameters_.carrier_shape;
+  CONSTRAIN(shape, 0, 3);
 
-  // Coarse pitch: algorithm pot ∈ [0,1] → ±12 semitones.
-  // Fine detune: modulation pot ∈ [0,1] → ±0.5 semitone (full =  ±50¢).
-  const float coarse_st =
-      (previous_parameters_.raw_algorithm - 0.5f) * 24.0f;
-  const float detune_st =
-      (previous_parameters_.modulation_parameter - 0.5f) * 1.0f;
-  pitch_shifter.set_pitch(coarse_st, detune_st);
+  tremolo.set_amount(previous_parameters_.raw_level_pot[0]);
+  tremolo.set_depth(previous_parameters_.raw_level_pot[1]);
+  tremolo.set_rate(previous_parameters_.raw_algorithm);
+  tremolo.set_stereo_phase(previous_parameters_.modulation_parameter * 0.5f);
+  tremolo.set_shape(shape);
 
-  pitch_shifter.set_mix(previous_parameters_.raw_level_pot[0]);
-  pitch_shifter.set_feedback(previous_parameters_.raw_level_pot[1] * 0.85f);
-  // Raw mod knob also acts as tone/damping for VOICING_SHIMMER; other
-  // voicings consume it as the detune above and ignore tone_.
-  pitch_shifter.set_tone(previous_parameters_.modulation_parameter);
-
-  for (size_t i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; i++) {
     main_output[i] = carrier[i];
     aux_output[i] = modulator[i];
   }
 
-  pitch_shifter.Process(main_output, aux_output, size);
+  tremolo.Process(main_output, aux_output, size);
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
 }
+
+// ProcessPitchShifter replaced by ProcessTremolo.
+// void Modulator::ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size) {
+//   float* carrier = buffer_[0];
+//   float* modulator = buffer_[1];
+//   float* main_output = buffer_[0];
+//   float* aux_output = buffer_[2];
+//
+//   ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
+//
+//   int32_t voicing = parameters_.carrier_shape;
+//   CONSTRAIN(voicing, 0, 3);
+//   pitch_shifter.set_voicing(voicing);
+//
+//   const float coarse_st =
+//       (previous_parameters_.raw_algorithm - 0.5f) * 24.0f;
+//   const float detune_st =
+//       (previous_parameters_.modulation_parameter - 0.5f) * 1.0f;
+//   pitch_shifter.set_pitch(coarse_st, detune_st);
+//
+//   pitch_shifter.set_mix(previous_parameters_.raw_level_pot[0]);
+//   pitch_shifter.set_feedback(previous_parameters_.raw_level_pot[1] * 0.85f);
+//   pitch_shifter.set_tone(previous_parameters_.modulation_parameter);
+//
+//   for (size_t i = 0; i < size; ++i) {
+//     main_output[i] = carrier[i];
+//     aux_output[i] = modulator[i];
+//   }
+//
+//   pitch_shifter.Process(main_output, aux_output, size);
+//
+//   Convert(output, main_output, aux_output, 32768.0f, size);
+//   previous_parameters_ = parameters_;
+// }
 
 void Modulator::ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size) {
 
@@ -862,7 +887,8 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     reverb.Clear();
     ensemble.Reset();
     phaser.Reset();
-    pitch_shifter.Clear();
+    // pitch_shifter.Clear();  // replaced by tremolo
+    tremolo.Reset();
     reset_fx = false;
   }
 
@@ -888,8 +914,11 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessPhaser(input, output, size);
     break;
 
-  case FEATURE_MODE_PITCH_SHIFTER:
-    ProcessPitchShifter(input, output, size);
+  // case FEATURE_MODE_PITCH_SHIFTER:
+  //   ProcessPitchShifter(input, output, size);
+  //   break;
+  case FEATURE_MODE_TREMOLO:
+    ProcessTremolo(input, output, size);
     break;
 
   case FEATURE_MODE_DOPPLER:
