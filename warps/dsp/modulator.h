@@ -47,6 +47,7 @@
 #include "warps/dsp/fx/phaser.h"
 // #include "warps/dsp/fx/pitch_shifter.h"  // replaced by tremolo
 #include "warps/dsp/fx/tremolo.h"
+#include "warps/dsp/fx/formant_shifter.h"
 
 namespace warps {
 
@@ -64,6 +65,7 @@ static Ensemble ensemble;
 static Phaser phaser;
 // static PitchShifter pitch_shifter;  // replaced by tremolo
 static Tremolo tremolo;
+static FormantShifter formant_shifter;
 
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
@@ -170,6 +172,7 @@ class Modulator {
   void ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t size);
+  void ProcessFormantShifter(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
@@ -182,7 +185,7 @@ class Modulator {
   inline bool alt_feature_mode() const { return alt_feature_mode_; }
   
   inline void set_feature_mode(FeatureMode feature_mode) { 
-    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER /* || feature_mode_ == FEATURE_MODE_PITCH_SHIFTER */;
+    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER || feature_mode_ == FEATURE_MODE_FORMANT_SHIFTER /* || feature_mode_ == FEATURE_MODE_PITCH_SHIFTER */;
     if (is_fx && feature_mode != feature_mode_) {
       reset_fx = true;
     }
@@ -391,13 +394,17 @@ class Modulator {
 
   Oscillator xmod_oscillator_;
   Oscillator vocoder_oscillator_;
-  QuadratureOscillator quadrature_oscillator_;
+  // quadrature_oscillator_ / quadrature_transform_ are FreqShifter-only;
+  // FEATURE_MODE_FREQUENCY_SHIFTER is currently replaced by FORMANT_SHIFTER.
+  // QuadratureOscillator quadrature_oscillator_;
   SampleRateConverter<SRC_UP, kOversampling, 48> src_up_[2];
   SampleRateConverter<SRC_DOWN, kOversampling, 48> src_down_;
-  SampleRateConverter<SRC_UP, kLessOversampling, 48> src_up2_[2];
-  SampleRateConverter<SRC_DOWN, kLessOversampling, 48> src_down2_[2];
+  // src_up2_ / src_down2_ are declared+inited but never referenced anywhere.
+  // SampleRateConverter<SRC_UP, kLessOversampling, 48> src_up2_[2];
+  // SampleRateConverter<SRC_DOWN, kLessOversampling, 48> src_down2_[2];
   Vocoder vocoder_;
-  QuadratureTransform quadrature_transform_[2];  
+  // QuadratureTransform quadrature_transform_[2];
+
 
   stmlib::OnePole filter_[4];
 

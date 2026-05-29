@@ -48,15 +48,15 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   for (int32_t i = 0; i < 2; ++i) {
     amplifier_[i].Init();
     src_up_[i].Init();
-    src_up2_[i].Init();
-    src_down2_[i].Init();
-    quadrature_transform_[i].Init(lut_ap_poles, LUT_AP_POLES_SIZE);
+    // src_up2_[i].Init();
+    // src_down2_[i].Init();
+    // quadrature_transform_[i].Init(lut_ap_poles, LUT_AP_POLES_SIZE);
   }
   src_down_.Init();
 
   xmod_oscillator_.Init(sample_rate);
   vocoder_oscillator_.Init(sample_rate);
-  quadrature_oscillator_.Init(sample_rate);
+  // quadrature_oscillator_.Init(sample_rate);
   vocoder_.Init(sample_rate);
   df.Init();
   reverb.Init(reverb_buffer);
@@ -64,6 +64,7 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   // pitch_shifter.Init(reverb_buffer);  // replaced by tremolo
   phaser.Init(sample_rate);
   tremolo.Init(sample_rate);
+  formant_shifter.Init(reverb_buffer);
 
   previous_parameters_.carrier_shape = 0;
   previous_parameters_.channel_drive[0] = 0.0f;
@@ -84,6 +85,8 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   filter_[3].Init();
 }
 
+// ProcessFreqShifter replaced by ProcessFormantShifter.
+/*
 void Modulator::ProcessFreqShifter(
     ShortFrame* input,
     ShortFrame* output,
@@ -202,6 +205,7 @@ void Modulator::ProcessFreqShifter(
   feedback_sample_ = feedback_sample;
   previous_parameters_ = parameters_;
 }
+*/
 
 void Modulator::ProcessMeta(
     ShortFrame* input,
@@ -513,6 +517,36 @@ void Modulator::ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t siz
   }
 
   tremolo.Process(main_output, aux_output, size);
+
+  Convert(output, main_output, aux_output, 32768.0f, size);
+  previous_parameters_ = parameters_;
+}
+
+void Modulator::ProcessFormantShifter(ShortFrame* input, ShortFrame* output, size_t size) {
+  float* carrier = buffer_[0];
+  float* modulator = buffer_[1];
+  float* main_output = buffer_[0];
+  float* aux_output = buffer_[2];
+
+  // LEVEL CVs act as input VCAs (cv_scaler forces raw_level_cv = 0.6f when
+  // the jack is unpatched). Same idiom as phaser / tremolo / pitch shifter.
+  ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
+
+  int32_t shape = parameters_.carrier_shape;
+  CONSTRAIN(shape, 0, 3);
+
+  formant_shifter.set_mix(previous_parameters_.raw_level_pot[0]);
+  formant_shifter.set_feedback(previous_parameters_.raw_level_pot[1] * 0.85f);
+  formant_shifter.set_algo(previous_parameters_.raw_algorithm);
+  formant_shifter.set_mod(previous_parameters_.modulation_parameter);
+  formant_shifter.set_voicing(shape);
+
+  for (size_t i = 0; i < size; i++) {
+    main_output[i] = carrier[i];
+    aux_output[i] = modulator[i];
+  }
+
+  formant_shifter.Process(main_output, aux_output, size);
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
@@ -889,6 +923,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     phaser.Reset();
     // pitch_shifter.Clear();  // replaced by tremolo
     tremolo.Reset();
+    formant_shifter.Clear();
     reset_fx = false;
   }
 
@@ -906,8 +941,11 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessReverb(input, output, size);
     break;
 
-  case FEATURE_MODE_FREQUENCY_SHIFTER:
-    ProcessFreqShifter(input, output, size);
+  // case FEATURE_MODE_FREQUENCY_SHIFTER:
+  //   ProcessFreqShifter(input, output, size);
+  //   break;
+  case FEATURE_MODE_FORMANT_SHIFTER:
+    ProcessFormantShifter(input, output, size);
     break;
 
   case FEATURE_MODE_PHASER:
