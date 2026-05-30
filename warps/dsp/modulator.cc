@@ -64,7 +64,6 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   // pitch_shifter.Init(reverb_buffer);  // replaced by tremolo
   phaser.Init(sample_rate);
   tremolo.Init(sample_rate);
-  // formant_shifter.Init(reverb_buffer);  // replaced by roboto
   // roboto.Init(sample_rate);  // Plan A — replaced by Plan B
   roboto.Init(reverb_buffer, sample_rate);
 
@@ -87,7 +86,7 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   filter_[3].Init();
 }
 
-// ProcessFreqShifter replaced by ProcessFormantShifter.
+// ProcessFreqShifter — removed.
 /*
 void Modulator::ProcessFreqShifter(
     ShortFrame* input,
@@ -524,76 +523,6 @@ void Modulator::ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t siz
   previous_parameters_ = parameters_;
 }
 
-// ProcessFormantShifter replaced by ProcessRoboto.
-// void Modulator::ProcessFormantShifter(ShortFrame* input, ShortFrame* output, size_t size) {
-//   float* carrier = buffer_[0];
-//   float* modulator = buffer_[1];
-//   float* main_output = buffer_[0];
-//   float* aux_output = buffer_[2];
-//
-//   // LEVEL CVs act as input VCAs (cv_scaler forces raw_level_cv = 0.6f when
-//   // the jack is unpatched). Same idiom as phaser / tremolo / pitch shifter.
-//   ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
-//
-//   int32_t shape = parameters_.carrier_shape;
-//   CONSTRAIN(shape, 0, 3);
-//
-//   formant_shifter.set_mix(previous_parameters_.raw_level_pot[0]);
-//   formant_shifter.set_feedback(previous_parameters_.raw_level_pot[1] * 0.85f);
-//   formant_shifter.set_algo(previous_parameters_.raw_algorithm);
-//   formant_shifter.set_mod(previous_parameters_.modulation_parameter);
-//   formant_shifter.set_voicing(shape);
-//
-//   for (size_t i = 0; i < size; i++) {
-//     main_output[i] = carrier[i];
-//     aux_output[i] = modulator[i];
-//   }
-//
-//   formant_shifter.Process(main_output, aux_output, size);
-//
-//   Convert(output, main_output, aux_output, 32768.0f, size);
-//   previous_parameters_ = parameters_;
-// }
-
-// Plan A ProcessRoboto — kept for reference, replaced by Plan B below.
-// void Modulator::ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size) {
-//   float* carrier = buffer_[0];      // IN1 — external carrier audio when shape==0
-//   float* modulator = buffer_[1];    // IN2 — voice / modulator source
-//   float* main_output = buffer_[0];  // aliases carrier
-//   float* aux_output = buffer_[2];
-//
-//   int32_t shape = parameters_.carrier_shape;
-//   CONSTRAIN(shape, 0, 3);
-//
-//   if (shape == 0) {
-//     ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
-//   } else {
-//     float level[2] = { 0.0f, parameters_.raw_level_cv[1] };
-//     ApplyAmplification(input, level, aux_output, size, true);
-//     for (size_t i = 0; i < size; ++i) {
-//       internal_modulation_[i] = 0.0f;
-//     }
-//     OscillatorShape osc_shape =
-//         (shape == 1) ? OSCILLATOR_SHAPE_SAW :
-//         (shape == 2) ? OSCILLATOR_SHAPE_PULSE :
-//                        OSCILLATOR_SHAPE_NOISE_LP;
-//     xmod_oscillator_.Render(
-//         osc_shape, parameters_.note, internal_modulation_, carrier, size);
-//   }
-//
-//   roboto.set_bits(previous_parameters_.modulation_parameter);
-//   roboto.set_mix(previous_parameters_.raw_level_pot[1]);
-//   roboto.set_sr_hold(previous_parameters_.raw_algorithm);
-//   if (shape == 0) {
-//     roboto.set_response(previous_parameters_.raw_level_pot[0]);
-//   }
-//   roboto.set_carrier_shape(shape);
-//   roboto.Process(carrier, modulator, main_output, aux_output, size);
-//
-//   Convert(output, main_output, aux_output, 32768.0f, size);
-//   previous_parameters_ = parameters_;
-// }
-
 void Modulator::ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size) {
   // Plan C — HT8950-faithful: 7-step pitch shifter (modes 0/2) and fixed-period
   // grain replay (modes 1/3).
@@ -640,40 +569,6 @@ void Modulator::ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
 }
-
-// ProcessPitchShifter replaced by ProcessTremolo.
-// void Modulator::ProcessPitchShifter(ShortFrame* input, ShortFrame* output, size_t size) {
-//   float* carrier = buffer_[0];
-//   float* modulator = buffer_[1];
-//   float* main_output = buffer_[0];
-//   float* aux_output = buffer_[2];
-//
-//   ApplyAmplification(input, parameters_.raw_level_cv, aux_output, size, true);
-//
-//   int32_t voicing = parameters_.carrier_shape;
-//   CONSTRAIN(voicing, 0, 3);
-//   pitch_shifter.set_voicing(voicing);
-//
-//   const float coarse_st =
-//       (previous_parameters_.raw_algorithm - 0.5f) * 24.0f;
-//   const float detune_st =
-//       (previous_parameters_.modulation_parameter - 0.5f) * 1.0f;
-//   pitch_shifter.set_pitch(coarse_st, detune_st);
-//
-//   pitch_shifter.set_mix(previous_parameters_.raw_level_pot[0]);
-//   pitch_shifter.set_feedback(previous_parameters_.raw_level_pot[1] * 0.85f);
-//   pitch_shifter.set_tone(previous_parameters_.modulation_parameter);
-//
-//   for (size_t i = 0; i < size; ++i) {
-//     main_output[i] = carrier[i];
-//     aux_output[i] = modulator[i];
-//   }
-//
-//   pitch_shifter.Process(main_output, aux_output, size);
-//
-//   Convert(output, main_output, aux_output, 32768.0f, size);
-//   previous_parameters_ = parameters_;
-// }
 
 void Modulator::ProcessDelay(ShortFrame* input, ShortFrame* output, size_t size) {
 
@@ -1012,8 +907,6 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     phaser.Reset();
     // pitch_shifter.Clear();  // replaced by tremolo
     tremolo.Reset();
-    // formant_shifter.Clear();  // replaced by roboto
-    // roboto.Reset();  // Plan A — replaced by Plan B
     roboto.Clear();
     reset_fx = false;
   }
@@ -1032,12 +925,6 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessReverb(input, output, size);
     break;
 
-  // case FEATURE_MODE_FREQUENCY_SHIFTER:
-  //   ProcessFreqShifter(input, output, size);
-  //   break;
-  // case FEATURE_MODE_FORMANT_SHIFTER:
-  //   ProcessFormantShifter(input, output, size);
-  //   break;
   case FEATURE_MODE_ROBOTO:
     ProcessRoboto(input, output, size);
     break;
@@ -1046,9 +933,6 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessPhaser(input, output, size);
     break;
 
-  // case FEATURE_MODE_PITCH_SHIFTER:
-  //   ProcessPitchShifter(input, output, size);
-  //   break;
   case FEATURE_MODE_TREMOLO:
     ProcessTremolo(input, output, size);
     break;
