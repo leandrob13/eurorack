@@ -597,16 +597,24 @@ void Modulator::ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t siz
 void Modulator::ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size) {
   // Plan C — HT8950-faithful: 7-step pitch shifter (modes 0/2) and fixed-period
   // grain replay (modes 1/3).
+  //   IN1 audio  -> audio-rate FM modulator on the robot fundamental (robot
+  //                 modes only). Patch an LFO/audio/anything — it bends the
+  //                 robot pitch in real time. Pitch modes ignore.
   //   IN2 audio  -> main input (pitch shifter source / robot grain content).
   //   LEVEL 1 CV -> freeze gate (robot modes). High = halt grain writes, hold
   //                 the current vowel. Pitch modes ignore.
   //   LEVEL 2 CV -> input VCA on IN2.
+  // out_main aliases buffer_[0] (= in1) — the FM source is read sample-by-
+  // sample BEFORE out_main is written, so the alias is safe.
+  float* in1_audio   = buffer_[0];   // IN1 — audio-rate FM source
   float* in_audio    = buffer_[1];   // IN2 — input audio
   float* scratch     = internal_modulation_;
-  float* main_output = buffer_[0];
+  float* main_output = buffer_[0];   // aliases in1_audio
   float* aux_output  = buffer_[2];
 
-  float level[2] = { 0.0f, parameters_.raw_level_cv[1] };
+  // IN1 at unity gain so FM modulation depth is consistent. IN2 controlled by
+  // LEVEL 2 CV as the input VCA.
+  float level[2] = { 1.0f, parameters_.raw_level_cv[1] };
   ApplyAmplification(input, level, aux_output, size, true);
 
   int32_t shape = parameters_.carrier_shape;
@@ -627,7 +635,7 @@ void Modulator::ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size
   // so there's no semantic conflict.
   roboto.set_freeze(previous_parameters_.raw_level_cv[0]);
 
-  roboto.Process(in_audio, scratch, main_output, aux_output, size);
+  roboto.Process(in_audio, in1_audio, scratch, main_output, aux_output, size);
 
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;

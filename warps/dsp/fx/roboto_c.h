@@ -205,8 +205,12 @@ class RobotoC {
     mode_ = static_cast<Mode>(shape);
   }
 
-  // Process one block. `in` is the input (DC-blocked in place); `scratch`,
-  // `out_main`, `out_aux` must be four DISTINCT, non-aliasing buffers.
+  // Process one block. `in` is the engine input (= IN2 audio, DC-blocked in
+  // place). `fm_src` is IN1 audio — used in ROBOT modes as an audio-rate FM
+  // modulator on the robot fundamental (per-sample bend of grain_inc). PITCH
+  // modes ignore `fm_src`. `scratch`, `out_main`, `out_aux` are the usual
+  // distinct buffers (out_main may alias fm_src — fm_src is consumed before
+  // out_main is written).
   //
   // Signal flow matches the HT8950 silicon: input is quantized + downsampled
   // at the ADC FIRST, then the buffer (pitch shifter / grain replay) sees
@@ -215,11 +219,11 @@ class RobotoC {
   //   in -> DC block -> SoftLimit -> bitcrush -> ZOH SR-reduce
   //                                                   |
   //                                                   v
-  //                              [pitch shift OR grain replay]
+  //                              [pitch shift OR grain replay]   <- fm_src
   //                                                   |
   //                                                   v
   //                                              DC block -> out
-  void Process(float* in, float* scratch,
+  void Process(float* in, float* fm_src, float* scratch,
                float* out_main, float* out_aux, size_t size) {
     const bool use_robot =
         (mode_ == MODE_ROBOT || mode_ == MODE_ROBOT_VIBRATO);
@@ -291,37 +295,39 @@ class RobotoC {
       // [0, grain_len) of the buffer at the robot rate, while the write
       // pointer continues sweeping through the FULL buffer in the background.
       //
-      //   output period = grain_len samples => fundamental = sample_rate /
-      //                                        grain_len = f_robot.
-      //   the read window's contents are refreshed every (kGrainBufSize /
-      //   grain_len) robot cycles as the write pointer laps it. Formants
-      //   ride the refresh; fundamental stays locked.
-      //
-      // grain_len <= kGrainBufSize/2 so the write spends > 1 cycle outside
-      // the read window (otherwise reads see live writes and the effect
-      // collapses to a delayed pass-through).
+      // IN1 audio (fm_src) audio-rate-modulates the phase advance per sample
+      // -> the robot fundamental bends with IN1 in real time. grain_len_base
+      // (the read-window width) stays fixed at the unmodulated value so each
+      // cycle reads the same buffer region — only the cycle DURATION varies.
+      // That gives clean through-FM character without clobbering content.
       float f = robot_freq_;
       if (use_vibrato) {
         f *= powf(2.0f, vib_st * (1.0f / 12.0f));
       }
-      float grain_inc = f / sample_rate_;
+      float grain_inc_base = f / sample_rate_;
       const float min_inc = 2.0f / static_cast<float>(kGrainBufSize);
-      if (grain_inc < min_inc) grain_inc = min_inc;
-      if (grain_inc > 0.25f) grain_inc = 0.25f;
-      const float grain_len = 1.0f / grain_inc;
+      if (grain_inc_base < min_inc) grain_inc_base = min_inc;
+      if (grain_inc_base > 0.25f) grain_inc_base = 0.25f;
+      const float grain_len_base = 1.0f / grain_inc_base;
       const float kPi = 3.14159265358979f;
       const float kQ = 32767.0f;
       const float kInvQ = 1.0f / kQ;
+      const float kFmDepth = 0.5f;  // ±50% bend at IN1 = ±1.0
 
       for (size_t i = 0; i < size; ++i) {
+        // Per-sample audio-rate FM on grain phase advance.
+        float inst_inc = grain_inc_base * (1.0f + fm_src[i] * kFmDepth);
+        if (inst_inc < min_inc) inst_inc = min_inc;
+        if (inst_inc > 0.25f) inst_inc = 0.25f;
+
         // Read BEFORE write so the read sees the previous lap's contents,
         // not the sample we're about to write this tick.
         float out = 0.0f;
         for (int32_t v = 0; v < 2; ++v) {
-          voice_phase_[v] += grain_inc;
+          voice_phase_[v] += inst_inc;
           if (voice_phase_[v] >= 1.0f) voice_phase_[v] -= 1.0f;
           int32_t read_pos =
-              static_cast<int32_t>(voice_phase_[v] * grain_len) &
+              static_cast<int32_t>(voice_phase_[v] * grain_len_base) &
               kGrainBufMask;
           float s = static_cast<float>(grain_buf_[read_pos]) * kInvQ;
           // sin^2 window; two voices offset by 0.5 sum to constant 1.
