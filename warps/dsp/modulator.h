@@ -47,7 +47,10 @@
 #include "warps/dsp/fx/phaser.h"
 // #include "warps/dsp/fx/pitch_shifter.h"  // replaced by tremolo
 #include "warps/dsp/fx/tremolo.h"
-#include "warps/dsp/fx/formant_shifter.h"
+// #include "warps/dsp/fx/formant_shifter.h"  // replaced by roboto
+// #include "warps/dsp/fx/roboto.h"  // Plan A — replaced by Plan B (roboto_b.h)
+// #include "warps/dsp/fx/roboto_b.h"  // Plan B — replaced by Plan C (roboto_c.h)
+#include "warps/dsp/fx/roboto_c.h"
 
 namespace warps {
 
@@ -65,7 +68,10 @@ static Ensemble ensemble;
 static Phaser phaser;
 // static PitchShifter pitch_shifter;  // replaced by tremolo
 static Tremolo tremolo;
-static FormantShifter formant_shifter;
+// static FormantShifter formant_shifter;  // replaced by roboto
+// static Roboto roboto;  // Plan A — replaced by Plan B
+// static RobotoB roboto;  // Plan B — replaced by Plan C
+static RobotoC roboto;
 
 typedef struct { short l; short r; } ShortFrame;
 typedef struct { float l; float r; } FloatFrame;
@@ -172,7 +178,8 @@ class Modulator {
   void ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessFormantShifter(ShortFrame* input, ShortFrame* output, size_t size);
+  // void ProcessFormantShifter(ShortFrame* input, ShortFrame* output, size_t size);  // replaced by ProcessRoboto
+  void ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
   inline Parameters* mutable_parameters() { return &parameters_; }
@@ -185,7 +192,7 @@ class Modulator {
   inline bool alt_feature_mode() const { return alt_feature_mode_; }
   
   inline void set_feature_mode(FeatureMode feature_mode) { 
-    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER || feature_mode_ == FEATURE_MODE_FORMANT_SHIFTER /* || feature_mode_ == FEATURE_MODE_PITCH_SHIFTER */;
+    bool is_fx = feature_mode_ == FEATURE_MODE_REVERB || feature_mode_ == FEATURE_MODE_ENSEMBLE || feature_mode_ == FEATURE_MODE_DELAY || feature_mode_ == FEATURE_MODE_PHASER || feature_mode_ == FEATURE_MODE_ROBOTO /* || feature_mode_ == FEATURE_MODE_FORMANT_SHIFTER || feature_mode_ == FEATURE_MODE_PITCH_SHIFTER */;
     if (is_fx && feature_mode != feature_mode_) {
       reset_fx = true;
     }

@@ -61,11 +61,13 @@ class RobotoC {
     MODE_ROBOT_VIBRATO,
   };
 
-  // Grain buffer: power of two for cheap masking. 2048 samples ~ 43 ms @ 48 k,
-  // so minimum robot fundamental ~23 Hz before grains alias against the buffer.
+  // Grain buffer: power of two for cheap masking. 4096 samples ~ 85 ms @ 48 k,
+  // so minimum robot fundamental ~24 Hz (= sample_rate * 2 / kGrainBufSize)
+  // before grains alias against the buffer. Smaller buffer = snappier formant
+  // tracking (read region refreshes every kGrainBufSize/grain_len cycles).
   // Stored as int16_t in the unused upper half of the shared 32k FX buffer
-  // (PitchShifter only uses entries [0, 16384) — see pitch_shifter.h kHalf).
-  static const int32_t kGrainBufSize = 2048;
+  // (PitchShifter only touches entries [0, 16384) — see pitch_shifter.h kHalf).
+  static const int32_t kGrainBufSize = 4096;
   static const int32_t kGrainBufMask = kGrainBufSize - 1;
   static const int32_t kGrainBufOffset = 16384;  // start past PitchShifter region
 
@@ -90,6 +92,7 @@ class RobotoC {
     voice_phase_[0] = 0.0f;
     voice_phase_[1] = 0.5f;
     robot_freq_ = 100.0f;
+    freeze_ = false;
 
     bit_levels_ = 255.0f;
     sr_phase_ = 0.0f;
@@ -113,6 +116,16 @@ class RobotoC {
     grain_write_ = 0;
     voice_phase_[0] = 0.0f;
     voice_phase_[1] = 0.5f;
+    freeze_ = false;
+  }
+
+  // LEVEL 1 CV -> grain-buffer freeze gate. High CV (above 0.7) halts writes
+  // in robot mode; the read keeps cycling through the last buffer contents,
+  // holding whatever vowel/grain was loaded. Threshold chosen above the
+  // unpatched cv_scaler default (~0.6) so unpatched jack = no freeze. Pitch
+  // modes ignore this — they have no grain buffer.
+  inline void set_freeze(float cv01) {
+    freeze_ = (cv01 > 0.7f);
   }
 
   // PITCH: caller passes (parameters_.note - 60.0f). We recenter and rescale
@@ -144,37 +157,39 @@ class RobotoC {
   // robot fundamental. There is no independent V/oct on robot pitch — that's
   // the authentic chip behavior.
   //
-  //   algo01 = 0.0 (CCW) -> clock ~1.5 kHz  (slowest, robot fund 30 Hz "vader")
-  //   algo01 = 0.5       -> clock ~5.5 kHz  (HT8950 territory, ~110 Hz fund)
+  //   algo01 = 0.0 (CCW) -> clock ~500 Hz   (slowest, robot fund 10 Hz buzz)
+  //   algo01 = 0.5       -> clock ~3.2 kHz  (HT8950 territory, ~63 Hz fund)
   //   algo01 = 1.0 (CW)  -> clock ~20 kHz   (fastest, fund ~400 Hz)
   //
-  // Range factor (20k/1.5k = ~13.3) is the maximum that keeps both robot-fund
-  // clamps (30 .. 400 Hz) from triggering anywhere across the sweep — so every
-  // turn of the knob audibly moves both bandwidth AND robot pitch.
+  // Range factor 40 (500 Hz -> 20 kHz). Divider 50 + clamp range [10, 400]
+  // mean both endpoints sit exactly at the clamps — the entire pot sweep
+  // audibly moves both bandwidth AND robot fund with no dead zones.
   inline void set_master_clock(float algo01) {
     if (algo01 < 0.0f) algo01 = 0.0f;
     if (algo01 > 1.0f) algo01 = 1.0f;
-    // Exponential from 1.5 kHz (CCW) up to ~20 kHz (CW).
-    const float kClockMin = 1500.0f;
+    // Exponential from 500 Hz (CCW) up to 20 kHz (CW).
+    const float kClockMin = 500.0f;
     const float kClockMax = 20000.0f;
     float clock_hz = kClockMin * powf(kClockMax / kClockMin, algo01);
     // SR-reduce ratio = clock / sample_rate.
     float ratio = clock_hz / sample_rate_;
     if (ratio > 1.0f) ratio = 1.0f;
     sr_ratio_ = ratio;
-    // Robot fundamental = master_clock / divider. Divider 50 keeps the full
-    // sweep inside [30, 400] Hz without clamping (1500/50=30, 20000/50=400).
+    // Robot fundamental = master_clock / 50. Range [10, 400] Hz across sweep.
+    // At 10 Hz it's subharmonic buzz; at 400 Hz high robot. Both extremes
+    // sit at the clamps so there is no dead zone.
     const float kRobotDivider = 50.0f;
     float fund = clock_hz * (1.0f / kRobotDivider);
-    if (fund < 30.0f) fund = 30.0f;
+    if (fund < 10.0f) fund = 10.0f;
     if (fund > 400.0f) fund = 400.0f;
     robot_freq_ = fund;
   }
 
+  // MOD -> bit depth. CCW = chip-faithful 8-bit; CW = 1-bit pulse-train.
   inline void set_bits(float mod01) {
     if (mod01 < 0.0f) mod01 = 0.0f;
     if (mod01 > 1.0f) mod01 = 1.0f;
-    float bits = 8.0f - mod01 * 5.0f;
+    float bits = 8.0f - mod01 * 7.0f;  // 8 .. 1
     bit_levels_ = powf(2.0f, bits) - 1.0f;
   }
 
@@ -206,15 +221,16 @@ class RobotoC {
   //                                              DC block -> out
   void Process(float* in, float* scratch,
                float* out_main, float* out_aux, size_t size) {
-    // 1. DC-block input.
-    for (size_t i = 0; i < size; ++i) {
-      in[i] = dc_in_.Process<stmlib::FILTER_MODE_HIGH_PASS>(in[i]);
-    }
-
     const bool use_robot =
         (mode_ == MODE_ROBOT || mode_ == MODE_ROBOT_VIBRATO);
     const bool use_vibrato =
         (mode_ == MODE_PITCH_VIBRATO || mode_ == MODE_ROBOT_VIBRATO);
+
+    // 1. DC-block input.
+    float* engine_src = in;
+    for (size_t i = 0; i < size; ++i) {
+      engine_src[i] = dc_in_.Process<stmlib::FILTER_MODE_HIGH_PASS>(engine_src[i]);
+    }
 
     // 2. 8 Hz vibrato LFO (block rate is fine — 2 ms at 96 sa/block vs 125 ms
     //    vibrato period).
@@ -227,22 +243,23 @@ class RobotoC {
 
     // 3. Stash clean DC-blocked dry in out_aux for the final crossfade.
     for (size_t i = 0; i < size; ++i) {
-      out_aux[i] = in[i];
+      out_aux[i] = engine_src[i];
     }
 
-    // 4. ADC emulation: SoftLimit -> bitcrush -> ZOH SR-reduce, IN PLACE.
-    //    After this block `in` is the 8-bit / clock-rate audio that the
-    //    chip's pitch shifter / robot readback actually operates on.
+    // 6. ADC emulation: SoftLimit -> bitcrush -> ZOH SR-reduce, IN PLACE on
+    //    the engine source. Afterwards engine_src holds the 8-bit /
+    //    clock-rate audio that the chip's pitch shifter / robot readback
+    //    actually operates on.
     for (size_t i = 0; i < size; ++i) {
-      in[i] = stmlib::SoftLimit(in[i]);
+      engine_src[i] = stmlib::SoftLimit(engine_src[i]);
     }
     {
       const float levels = bit_levels_;
       const float inv_levels = 1.0f / levels;
       for (size_t i = 0; i < size; ++i) {
-        float x = in[i] * levels;
+        float x = engine_src[i] * levels;
         int32_t q = static_cast<int32_t>(x + (x >= 0.0f ? 0.5f : -0.5f));
-        in[i] = static_cast<float>(q) * inv_levels;
+        engine_src[i] = static_cast<float>(q) * inv_levels;
       }
     }
     {
@@ -253,18 +270,18 @@ class RobotoC {
         phase += ratio;
         if (phase >= 1.0f) {
           phase -= 1.0f;
-          held = in[i];
+          held = engine_src[i];
         }
-        in[i] = held;
+        engine_src[i] = held;
       }
       sr_phase_ = phase;
       held_ = held;
     }
 
-    // 5. Snapshot the post-ADC ("what the chip sees") input into scratch for
+    // 7. Snapshot the post-ADC ("what the chip sees") input into scratch for
     //    the OUT2 alt monitor.
     for (size_t i = 0; i < size; ++i) {
-      scratch[i] = in[i];
+      scratch[i] = engine_src[i];
     }
 
     // 6. Either ROBOT (grain replay) or PITCH (SOLA shifter) — operating on
@@ -314,38 +331,39 @@ class RobotoC {
         }
 
         // Write input AFTER the read; advances through the full buffer.
-        float xq = in[i] * kQ;
-        if (xq > 32767.0f) xq = 32767.0f;
-        if (xq < -32768.0f) xq = -32768.0f;
-        grain_buf_[grain_write_ & kGrainBufMask] = static_cast<int16_t>(xq);
-        grain_write_ = (grain_write_ + 1) & kGrainBufMask;
+        // When frozen, skip the write — read keeps cycling through the last
+        // captured content, holding the current vowel/grain.
+        if (!freeze_) {
+          float xq = engine_src[i] * kQ;
+          if (xq > 32767.0f) xq = 32767.0f;
+          if (xq < -32768.0f) xq = -32768.0f;
+          grain_buf_[grain_write_ & kGrainBufMask] = static_cast<int16_t>(xq);
+          grain_write_ = (grain_write_ + 1) & kGrainBufMask;
+        }
 
-        in[i] = out;
+        engine_src[i] = out;
       }
     } else {
       // 7-step pitch shift (+ optional vibrato on top of the quantized step).
-      // PitchShifter needs a stereo pair; reuse scratch as the right channel,
-      // but DO NOT overwrite it first — we need scratch to retain the post-ADC
-      // snapshot for OUT2. Copy the post-ADC `in` into out_main as the second
-      // channel, then run the shifter on (in, out_main). out_main gets clobbered
-      // but we're about to overwrite it via the crossfade anyway.
+      // PitchShifter needs a stereo pair; copy engine_src into out_main as the
+      // second channel (out_main is about to be overwritten by the crossfade).
       pitch_shifter_.set_pitch(pitch_semitones_ + vib_st, 0.0f);
-      for (size_t i = 0; i < size; ++i) out_main[i] = in[i];
-      pitch_shifter_.Process(in, out_main, size);
+      for (size_t i = 0; i < size; ++i) out_main[i] = engine_src[i];
+      pitch_shifter_.Process(engine_src, out_main, size);
     }
 
-    // 7. DC-block on the way out.
+    // 8. DC-block on the way out.
     for (size_t i = 0; i < size; ++i) {
-      in[i] = dc_out_.Process<stmlib::FILTER_MODE_HIGH_PASS>(in[i]);
+      engine_src[i] = dc_out_.Process<stmlib::FILTER_MODE_HIGH_PASS>(engine_src[i]);
     }
 
-    // 8. Dry/wet crossfade. Dry is the clean DC-blocked input in out_aux;
-    //    wet is the engine output in `in`.
+    // 9. Dry/wet crossfade. Dry is the clean DC-blocked IN2 in out_aux;
+    //    wet is the engine output in engine_src.
     stmlib::ParameterInterpolator mix(&mix_, mix_target_, size);
     for (size_t i = 0; i < size; ++i) {
       float m = mix.Next();
       float dry = out_aux[i];
-      out_main[i] = dry + (in[i] - dry) * m;
+      out_main[i] = dry + (engine_src[i] - dry) * m;
     }
 
     // 9. Repurpose out_aux as the post-ADC snapshot (the "buffer audio" —
@@ -372,6 +390,7 @@ class RobotoC {
   int32_t grain_write_;
   float voice_phase_[2];
   float robot_freq_;
+  bool freeze_;
 
   float bit_levels_;
   float sr_phase_;
