@@ -50,20 +50,20 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
     src_up_[i].Init();
     // src_up2_[i].Init();
     // src_down2_[i].Init();
-    // quadrature_transform_[i].Init(lut_ap_poles, LUT_AP_POLES_SIZE);
+    quadrature_transform_[i].Init(lut_ap_poles, LUT_AP_POLES_SIZE);
   }
   src_down_.Init();
 
   xmod_oscillator_.Init(sample_rate);
   vocoder_oscillator_.Init(sample_rate);
-  // quadrature_oscillator_.Init(sample_rate);
+  quadrature_oscillator_.Init(sample_rate);
   vocoder_.Init(sample_rate);
   df.Init();
   reverb.Init(reverb_buffer);
   ensemble.Init(reverb_buffer);
   // pitch_shifter.Init(reverb_buffer);  // replaced by tremolo
   phaser.Init(sample_rate);
-  tremolo.Init(sample_rate);
+  // tremolo.Init(sample_rate);  // replaced by FrequencyShifter (restored)
   // roboto.Init(sample_rate);  // Plan A — replaced by Plan B
   roboto.Init(reverb_buffer, sample_rate);
 
@@ -86,8 +86,6 @@ void Modulator::Init(float sample_rate, uint16_t* reverb_buffer) {
   filter_[3].Init();
 }
 
-// ProcessFreqShifter — removed.
-/*
 void Modulator::ProcessFreqShifter(
     ShortFrame* input,
     ShortFrame* output,
@@ -206,7 +204,6 @@ void Modulator::ProcessFreqShifter(
   feedback_sample_ = feedback_sample;
   previous_parameters_ = parameters_;
 }
-*/
 
 void Modulator::ProcessMeta(
     ShortFrame* input,
@@ -493,6 +490,8 @@ void Modulator::ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size
   previous_parameters_ = parameters_;
 }
 
+// ProcessTremolo — replaced by ProcessFreqShifter (restored).
+/*
 void Modulator::ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t size) {
   float* carrier = buffer_[0];
   float* modulator = buffer_[1];
@@ -522,6 +521,7 @@ void Modulator::ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t siz
   Convert(output, main_output, aux_output, 32768.0f, size);
   previous_parameters_ = parameters_;
 }
+*/
 
 void Modulator::ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size) {
   // Plan C — HT8950-faithful: 7-step pitch shifter (modes 0/2) and fixed-period
@@ -906,7 +906,7 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ensemble.Reset();
     phaser.Reset();
     // pitch_shifter.Clear();  // replaced by tremolo
-    tremolo.Reset();
+    // tremolo.Reset();  // replaced by FrequencyShifter (restored)
     roboto.Clear();
     reset_fx = false;
   }
@@ -925,16 +925,16 @@ void Modulator::Process(ShortFrame* input, ShortFrame* output, size_t size) {
     ProcessReverb(input, output, size);
     break;
 
-  case FEATURE_MODE_ROBOTO:
-    ProcessRoboto(input, output, size);
-    break;
-
   case FEATURE_MODE_PHASER:
     ProcessPhaser(input, output, size);
     break;
 
-  case FEATURE_MODE_TREMOLO:
-    ProcessTremolo(input, output, size);
+  case FEATURE_MODE_ROBOTO:
+    ProcessRoboto(input, output, size);
+    break;
+
+  case FEATURE_MODE_FREQUENCY_SHIFTER:
+    ProcessFreqShifter(input, output, size);
     break;
 
   case FEATURE_MODE_DOPPLER:

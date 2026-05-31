@@ -46,7 +46,7 @@
 #include "warps/dsp/fx/ensemble.h"
 #include "warps/dsp/fx/phaser.h"
 // #include "warps/dsp/fx/pitch_shifter.h"  // replaced by tremolo
-#include "warps/dsp/fx/tremolo.h"
+// #include "warps/dsp/fx/tremolo.h"  // replaced by FrequencyShifter (restored)
 // #include "warps/dsp/fx/roboto.h"  // Plan A — replaced by Plan B (roboto_b.h)
 // #include "warps/dsp/fx/roboto_b.h"  // Plan B — replaced by Plan C (roboto_c.h)
 #include "warps/dsp/fx/roboto_c.h"
@@ -66,7 +66,7 @@ static DualFilter df;
 static Ensemble ensemble;
 static Phaser phaser;
 // static PitchShifter pitch_shifter;  // replaced by tremolo
-static Tremolo tremolo;
+// static Tremolo tremolo;  // replaced by FrequencyShifter (restored)
 // static Roboto roboto;  // Plan A — replaced by Plan B
 // static RobotoB roboto;  // Plan B — replaced by Plan C
 static RobotoC roboto;
@@ -175,7 +175,7 @@ class Modulator {
   void ProcessReverb(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessEnsemble(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size);
-  void ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t size);
+  // void ProcessTremolo(ShortFrame* input, ShortFrame* output, size_t size);  // replaced by ProcessFreqShifter (restored)
   void ProcessRoboto(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessDoppler(ShortFrame* input, ShortFrame* output, size_t size);
   void ProcessMeta(ShortFrame* input, ShortFrame* output, size_t size);
@@ -398,16 +398,15 @@ class Modulator {
 
   Oscillator xmod_oscillator_;
   Oscillator vocoder_oscillator_;
-  // quadrature_oscillator_ / quadrature_transform_ are FreqShifter-only;
-  // FEATURE_MODE_FREQUENCY_SHIFTER is removed.
-  // QuadratureOscillator quadrature_oscillator_;
+  // quadrature_oscillator_ / quadrature_transform_ are FreqShifter-only.
+  QuadratureOscillator quadrature_oscillator_;
   SampleRateConverter<SRC_UP, kOversampling, 48> src_up_[2];
   SampleRateConverter<SRC_DOWN, kOversampling, 48> src_down_;
   // src_up2_ / src_down2_ are declared+inited but never referenced anywhere.
   // SampleRateConverter<SRC_UP, kLessOversampling, 48> src_up2_[2];
   // SampleRateConverter<SRC_DOWN, kLessOversampling, 48> src_down2_[2];
   Vocoder vocoder_;
-  // QuadratureTransform quadrature_transform_[2];
+  QuadratureTransform quadrature_transform_[2];
 
 
   stmlib::OnePole filter_[4];
