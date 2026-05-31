@@ -475,7 +475,7 @@ void Modulator::ProcessPhaser(ShortFrame* input, ShortFrame* output, size_t size
   if (shape < 0) shape = 0;
   if (shape > 3) shape = 3;
 
-  phaser.set_amount(1.0f);                                            // Fixed 100% wet
+  phaser.set_amount(0.8f);                                            // Fixed 100% wet
   phaser.set_feedback(previous_parameters_.raw_level_pot[1] * 1.2f);  // LEVEL2 = feedback (high range)
   phaser.set_center(previous_parameters_.modulation_parameter);       // MOD = center
   phaser.set_rate(previous_parameters_.raw_algorithm);                // ALGO = rate

@@ -49,7 +49,7 @@ class Phaser {
 
   void Init(float sample_rate) {
     sample_rate_ = sample_rate;
-    amount_ = 0.5f;
+    amount_ = 0.75f;
     feedback_ = 0.0f;
     center_ = 0.5f;
     depth_ = 0.5f;
@@ -99,6 +99,12 @@ class Phaser {
     }
   }
 
+  // Bipolar triangle in [-1, +1] over one full phase cycle.
+  static inline float Triangle(uint32_t phase) {
+    uint32_t folded = (phase < 0x80000000u) ? phase : ~phase;
+    return folded * (2.0f / 2147483648.0f) - 1.0f;
+  }
+
   void Process(float* left, float* right, size_t size) {
     // LFO: 0.1 Hz .. ~6 Hz
     float lfo_freq = 0.1f * stmlib::SemitonesToRatio(rate_ * 70.9f);
@@ -109,8 +115,9 @@ class Phaser {
     float center_hz = 20.0f * stmlib::SemitonesToRatio(center_ * 111.4f);
 
     uint32_t end_phase = lfo_phase_ + phase_inc * static_cast<uint32_t>(size);
-    float lfo_l = SineLut(end_phase);
-    float lfo_r = SineLut(end_phase + 0x40000000u);
+    // Triangle LFO: more vintage OTA/FET phaser character than a sine.
+    float lfo_l = Triangle(end_phase);
+    float lfo_r = Triangle(end_phase + 0x40000000u);
 
     // Exponentially staggered stage frequencies.
     // We calculate the 'g' coefficient (tan(pi*f/fs)) for each stage.
@@ -119,8 +126,11 @@ class Phaser {
     float g_step_l[kPhaserMaxStages];
     float g_step_r[kPhaserMaxStages];
 
-    // Spread factor based on stage count (wider spread for more stages).
-    float spread = stages_ == 12 ? 0.25f : 0.15f;
+    // Vintage 4/6-stage voicings tune all stages identically (single sweeping
+    // notch comb, Phase 90 / Small Stone style). Wider voicings keep a stagger.
+    float spread = 0.0f;
+    if (stages_ == 8) spread = 0.15f;
+    else if (stages_ == 12) spread = 0.25f;
 
     for (int8_t i = 0; i < stages_; ++i) {
       // Stagger each stage by a fraction of an octave.
@@ -139,6 +149,8 @@ class Phaser {
     }
 
     float feedback = feedback_;
+    // Cap wet mix at 75% so the dry signal is always present — vintage units
+    // never hit a perfect 50/50 sum and retain some "body" at max depth.
     float amount = amount_;
     int8_t n_stages = stages_;
     
