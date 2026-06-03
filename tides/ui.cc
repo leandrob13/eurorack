@@ -1,6 +1,6 @@
-// Copyright 2013 Emilie Gillet.
+// Copyright 2013 Olivier Gillet.
 //
-// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+// Author: Olivier Gillet (ol.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@
 namespace tides {
 
 const int32_t kLongPressDuration = 1000;
+const uint8_t kMagicNumber = 42;
 
 using namespace stmlib;
 
@@ -49,17 +50,31 @@ void Ui::Init(Generator* generator, CvScaler* cv_scaler) {
   mode_ = factory_testing_switch_.Read()
       ? UI_MODE_NORMAL
       : UI_MODE_FACTORY_TESTING;
-  
+
+  ignore_releases_ = 0;
+
+  if (switches_.pressed_immediate(1)) {
+    mode_ = UI_MODE_CALIBRATION_C2;
+    ignore_releases_ = 1;
+  }
+
+  generator->feature_mode_ = Generator::FEAT_MODE_FUNCTION;
+
   generator_ = generator;
   cv_scaler_ = cv_scaler;
   
-  if (!mode_storage.ParsimoniousLoad(&settings_, &version_token_)) {
+  if (!mode_storage.ParsimoniousLoad(&settings_, &version_token_) ||
+      settings_.magic_number != kMagicNumber) {
+    settings_.magic_number = kMagicNumber;
     mode_counter_ = 1;
     range_counter_ = 2;
+    cv_scaler_->quantize_ = 0;
     generator->set_sync(false);
   } else {
     mode_counter_ = settings_.mode;
     range_counter_ = 2 - settings_.range;
+    cv_scaler_->quantize_ = settings_.quantize;
+    generator->feature_mode_ = static_cast<Generator::FeatureMode>(settings_.feature_mode);
     generator->set_sync(settings_.sync);
   }
 
@@ -72,6 +87,8 @@ void Ui::SaveState() {
   settings_.mode = generator_->mode();
   settings_.range = generator_->range();
   settings_.sync = generator_->sync();
+  settings_.feature_mode = generator_->feature_mode_;
+  settings_.quantize = cv_scaler_->quantize_;
   mode_storage.ParsimoniousSave(settings_, &version_token_);
 }
 
@@ -134,6 +151,43 @@ void Ui::Poll() {
   }
   
   switch (mode_) {
+    case UI_MODE_FEATURE_SWITCH:
+      {
+        bool blink = system_clock.milliseconds() & 32;
+        switch (generator_->feature_mode_) {
+        case Generator::FEAT_MODE_FUNCTION:
+          leds_.set_mode(blink);
+          leds_.set_value(0);
+          leds_.set_rate(0);
+          break;
+        case Generator::FEAT_MODE_HARMONIC:
+          leds_.set_mode(0);
+          leds_.set_value(blink ? 65535 : 0);
+          leds_.set_rate(0);
+          break;
+        case Generator::FEAT_MODE_RANDOM:
+          leds_.set_mode(0);
+          leds_.set_value(0);
+          leds_.set_rate(blink ? 65535 : 0);
+          break;
+        }
+      }
+      break;
+    case UI_MODE_QUANTIZE:
+      {
+        bool led1 = cv_scaler_->quantize_ & 1;
+        bool led2 = cv_scaler_->quantize_ & 2;
+        bool led3 = cv_scaler_->quantize_ & 4;
+        uint16_t on = ((system_clock.milliseconds() & 16) &&
+                       (system_clock.milliseconds() & 8) &&
+                       (system_clock.milliseconds() & 4) &&
+                       (system_clock.milliseconds() & 2)) * 65535;
+        uint16_t off = 0;
+        leds_.set_mode(0, led1 ? on : off);
+        leds_.set_value(0, led2 ? on : off);
+        leds_.set_rate(0, led3 ? on : off);
+      }
+      break;
     case UI_MODE_NORMAL:
       {
         GeneratorMode mode = generator_->mode();
@@ -174,13 +228,7 @@ void Ui::Poll() {
       leds_.set_rate(0, 65535);
       leds_.set_value(0, 65535);
       break;
-      
-    case UI_MODE_PAQUES:
-      leds_.set_mode(true, false);
-      leds_.set_rate(65535, 0);
-      leds_.set_value(65535, 0);
-      break;
-      
+
     case UI_MODE_FACTORY_TESTING:
       if (orange_) {
         leds_.set_mode(true, true);
@@ -228,20 +276,43 @@ void Ui::FlushEvents() {
 }
 
 void Ui::OnSwitchPressed(const Event& e) {
-  switch (e.control_id) {
-    case 0:
-      break;
-      
-    case 1:
-      break;
+  // double press -> feature switch mode
+  if ((e.control_id == 0 && switches_.pressed_immediate(1)) ||
+      (e.control_id == 1 && switches_.pressed_immediate(0))) {
+    mode_ = UI_MODE_FEATURE_SWITCH;
+    ignore_releases_ = 2;
   }
 }
 
 void Ui::OnSwitchReleased(const Event& e) {
+
+  // hack for double presses
+  if (ignore_releases_ > 0) {
+    ignore_releases_--;
+    return;
+  }
+  
   if (mode_ == UI_MODE_FACTORY_TESTING) {
     return;
-  } else if (mode_ == UI_MODE_PAQUES) {
-    mode_ = UI_MODE_NORMAL;
+  } else if (mode_ == UI_MODE_FEATURE_SWITCH) {
+    uint8_t feat = generator_->feature_mode_;
+    int8_t dir = e.control_id == 0 ? -1 : 1;
+    int8_t mode = (feat + dir) % 3;
+    if (mode == -1) mode = 2;
+    generator_->feature_mode_ = static_cast<Generator::FeatureMode>(mode);
+    UpdateMode();
+    UpdateRange();
+  } else if (mode_ == UI_MODE_QUANTIZE) {
+    if (e.data > kLongPressDuration) {
+      mode_ = UI_MODE_NORMAL;
+    } else {
+      uint8_t q = cv_scaler_->quantize_;
+      int8_t dir = e.control_id == 0 ? -1 : 1;
+      int8_t quant = (q + dir) % 8;
+      if (quant == -1) quant = 7;
+      cv_scaler_->quantize_ = quant;
+      SaveState();
+    }
   } else if (mode_ == UI_MODE_CALIBRATION_C2) {
     if (e.data > kLongPressDuration) {
       ++long_press_counter_;
@@ -256,17 +327,13 @@ void Ui::OnSwitchReleased(const Event& e) {
     mode_ = UI_MODE_NORMAL;
     if (e.control_id == 0) {
       cv_scaler_->Calibrate();
-    } else if (e.control_id == 1 && long_press_counter_ == 1 &&
-               e.data > kLongPressDuration) {
-      mode_ = UI_MODE_PAQUES;
     }
   } else {
     long_press_counter_ = 0;
     switch (e.control_id) {
       case 0:
-        if (e.data > kLongPressDuration &&
-            cv_scaler_->can_enter_calibration()) {
-          mode_ = UI_MODE_CALIBRATION_C2;
+        if (e.data > kLongPressDuration) {
+          mode_ = UI_MODE_QUANTIZE;
         } else {
           ++mode_counter_;
           UpdateMode();
@@ -297,8 +364,10 @@ void Ui::DoEvents() {
       }
     }
   }
-  if (queue_.idle_time() > 1000) {
+  if (queue_.idle_time() > 2000) {
     queue_.Touch();
+    if (mode_ == UI_MODE_FEATURE_SWITCH)
+      mode_ = UI_MODE_NORMAL;
   }
 }
 

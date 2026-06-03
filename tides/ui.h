@@ -1,6 +1,6 @@
-// Copyright 2013 Emilie Gillet.
+// Copyright 2013 Olivier Gillet.
 //
-// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+// Author: Olivier Gillet (ol.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -46,15 +46,19 @@ enum UiMode {
   UI_MODE_NORMAL,
   UI_MODE_CALIBRATION_C2,
   UI_MODE_CALIBRATION_C4,
-  UI_MODE_PAQUES,
-  UI_MODE_FACTORY_TESTING
+  UI_MODE_FACTORY_TESTING,
+  UI_MODE_FEATURE_SWITCH,
+  UI_MODE_QUANTIZE,
 };
 
 struct Settings {
   uint8_t mode;
   uint8_t range;
   uint8_t sync;
-  uint8_t padding;
+  uint8_t magic_number;  /* don't move that line around! */
+  uint8_t quantize;
+  uint8_t feature_mode;
+  uint8_t padding[2];
 };
 
 class Ui {
@@ -99,7 +103,7 @@ class Ui {
   FactoryTestingSwitch factory_testing_switch_;
   uint32_t press_time_[kNumSwitches];
   UiMode mode_;
-  
+
   Generator* generator_;
   CvScaler* cv_scaler_;
   
@@ -109,7 +113,8 @@ class Ui {
   uint8_t mode_counter_;
   uint8_t range_counter_;
   uint8_t long_press_counter_;
-  
+  uint8_t ignore_releases_;
+
   DISALLOW_COPY_AND_ASSIGN(Ui);
 };
 

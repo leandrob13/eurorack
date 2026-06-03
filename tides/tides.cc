@@ -1,6 +1,6 @@
-// Copyright 2013 Emilie Gillet.
+// Copyright 2013 Olivier Gillet.
 // 
-// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+// Author: Olivier Gillet (ol.gillet@gmail.com)
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -31,7 +31,6 @@
 #include "tides/drivers/system.h"
 #include "tides/cv_scaler.h"
 #include "tides/generator.h"
-#include "tides/plotter.h"
 #include "tides/ui.h"
 
 using namespace tides;
@@ -43,7 +42,6 @@ Dac dac;
 GateOutput gate_output;
 GateInput gate_input;
 Generator generator;
-Plotter plotter;
 System sys;
 Ui ui;
 
@@ -93,11 +91,6 @@ void TIM1_UP_IRQHandler(void) {
       saw_counter += 8947848;
       gate_output.Write(saw_counter & 0x80000000, saw_counter & 0x80000000);
     }
-  } else if (ui.mode() == UI_MODE_PAQUES) {
-    if (dac.ready()) {
-      plotter.Run();
-      dac.Write(plotter.x(), plotter.y());
-    }
   } else {
     if (dac.ready()) {
       ++dac_divider;
@@ -107,7 +100,9 @@ void TIM1_UP_IRQHandler(void) {
         uint32_t uni = sample.unipolar;
         int32_t bi = sample.bipolar;
         uint32_t level = cv_scaler.level();
-        if (ui.mode() >= UI_MODE_CALIBRATION_C2) {
+        if (ui.mode() == UI_MODE_CALIBRATION_C2 ||
+            ui.mode() == UI_MODE_CALIBRATION_C4 ||
+            ui.mode() == UI_MODE_FACTORY_TESTING) {
           level = 65535;  // Bypass VCA in calibration mode!
         }
         uni = uni * level >> 16;
@@ -131,8 +126,6 @@ void TIM1_UP_IRQHandler(void) {
 
 }
 
-#include "tides/easter_egg/plotter_program.h"
-
 void Init() {
   sys.Init(F_CPU / (48000 * 2) - 1, true);
   adc.Init(false);
@@ -141,7 +134,6 @@ void Init() {
   gate_output.Init();
   gate_input.Init();
   generator.Init();
-  plotter.Init(plotter_program, sizeof(plotter_program) / sizeof(PlotInstruction));
   ui.Init(&generator, &cv_scaler);
   sys.StartTimers();
 }
@@ -153,11 +145,20 @@ int main(void) {
       if (debug_rendering) {
         gate_output.Write(true, true);
       }
-      generator.set_pitch(cv_scaler.pitch());
+      /* in harmonic mode, the range button sets the waveform, not the pitch */
+      if (generator.feature_mode_ == Generator::FEAT_MODE_HARMONIC) {
+        generator.set_pitch_high_range(cv_scaler.pitch(), cv_scaler.fm());
+      } else {
+        generator.set_pitch(cv_scaler.pitch(), cv_scaler.fm());
+      }
+      if (generator.feature_mode_ == Generator::FEAT_MODE_RANDOM) {
+        generator.set_pulse_width(cv_scaler.raw_attenuverter());
+      }
+
       generator.set_shape(cv_scaler.shape());
       generator.set_slope(cv_scaler.slope());
       generator.set_smoothness(cv_scaler.smoothness());
-      generator.Process();
+      generator.FillBuffer();
       if (debug_rendering) {
         gate_output.Write(false, false);
       }

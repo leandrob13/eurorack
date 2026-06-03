@@ -1,8 +1,8 @@
 #!/usr/bin/python2.5
 #
-# Copyright 2014 Emilie Gillet.
+# Copyright 2014 Olivier Gillet.
 #
-# Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+# Author: Olivier Gillet (ol.gillet@gmail.com)
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -58,7 +58,6 @@ f = 1 - numpy.exp(-numpy.arccosh(2 - numpy.cos(f)))
 lookup_tables_32.append(
     ('cutoff', numpy.maximum(1, f * 32767.0 * 65536.0))
 )
-
 
 
 """----------------------------------------------------------------------------
