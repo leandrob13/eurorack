@@ -35,6 +35,7 @@
 #include "tides2/cv_reader.h"
 #include "tides2/factory_test.h"
 #include "tides2/io_buffer.h"
+#include "tides2/keyframer.h"
 #include "tides2/poly_slope_generator.h"
 #include "tides2/ramp/ramp_extractor.h"
 #include "tides2/modulators/poly_lfo.h"
@@ -60,6 +61,7 @@ FactoryTest factory_test;
 GateInputs gate_inputs;
 HysteresisQuantizer2 ratio_index_quantizer;
 IOBuffer io_buffer;
+Keyframer keyframer;
 PolySlopeGenerator poly_slope_generator;
 RampExtractor ramp_extractor;
 PolyLfo poly_lfo;
@@ -140,10 +142,86 @@ float ramp[kBlockSize];
 OutputMode previous_output_mode;
 bool must_reset_ramp_extractor;
 
+// One-pole smoothed keyframer output voltages to avoid block-boundary steps.
+float kf_out_lp[kNumCvOutputs];
+
+void ProcessKeyframer(IOBuffer::Block* block, size_t size) {
+  const State& state = settings.state();
+  const KeyframeBank& bank = state.bank;
+
+  // FRAME: raw FREQUENCY pot → 0..65535 for a linear full-range sweep.
+  // FM jack × attenuverter provides additive modulation.
+  float frame = cv_reader.pots().float_value(POTS_ADC_CHANNEL_POT_FREQUENCY);
+  float fm_mod = block->parameters.fm / 192.0f;  // semitones → ±0.5 fraction
+  frame += fm_mod;
+  CONSTRAIN(frame, 0.0f, 1.0f);
+  uint16_t timestamp = static_cast<uint16_t>(frame * 65535.0f);
+
+  // SHAPE split: pot → global easing morph; CV × attenuverter → master VCA.
+  float shape_pot   = cv_reader.pots().float_value(POTS_ADC_CHANNEL_POT_SHAPE);
+  float shape_cv    = cv_reader.cv().float_value(CV_ADC_CHANNEL_SHAPE);
+  float shape_atten = cv_reader.pots().float_value(POTS_ADC_CHANNEL_ATTENUVERTER_SHAPE);
+
+  keyframer.set_global_easing(shape_pot);
+
+  // Cubic attenuverter law: center = 0 (CV off), CW = +1, CCW = -1.
+  float a = shape_atten - 0.5f;
+  a = a * a * a * 8.0f;
+  float master = 1.0f + shape_cv * a;  // unpatched cv ≈ 0 → unity
+  CONSTRAIN(master, 0.0f, 2.0f);
+
+  // Live channel values: ch0=SLOPE, ch1=SMOOTHNESS, ch2=SHIFT.
+  // In bipolar mode, apply center detent so 12 o'clock = 0 V.
+  // SHIFT is already detented in cv_reader; apply detent to SLOPE/SMOOTHNESS here.
+  const bool bipolar = bank.output_bipolar != 0;
+  float live[kKFNumChannels] = {
+    block->parameters.slope,
+    block->parameters.smoothness,
+    block->parameters.shift,
+  };
+  if (bipolar) {
+    live[0] = cv_reader.CenterDetent(live[0]);
+    live[1] = cv_reader.CenterDetent(live[1]);
+  }
+  for (int j = 0; j < kKFNumChannels; ++j) keyframer.set_immediate(j, live[j]);
+  keyframer.Evaluate(timestamp);
+
+  // Map level [0,1] → volts (per polarity) then apply master VCA.
+  float v[kKFNumChannels];
+  for (int j = 0; j < kKFNumChannels; ++j) {
+    float L = keyframer.level(j);
+    float volts = bipolar ? (L - 0.5f) * 10.0f : L * 5.0f;
+    v[j] = volts * master;
+  }
+  float sum_v = (v[0] + v[1] + v[2]) / 3.0f;
+  CONSTRAIN(sum_v, -5.0f, 5.0f);
+
+  // LP-smooth to remove block-boundary steps (~50 Hz cutoff at 6 kHz block rate).
+  const float kSmooth = 0.05f;
+  ONE_POLE(kf_out_lp[0], v[0],  kSmooth);
+  ONE_POLE(kf_out_lp[1], v[1],  kSmooth);
+  ONE_POLE(kf_out_lp[2], v[2],  kSmooth);
+  ONE_POLE(kf_out_lp[3], sum_v, kSmooth);
+
+  for (size_t i = 0; i < size; ++i) {
+    for (int j = 0; j < kKFNumChannels; ++j) {
+      block->output[j][i] = settings.dac_code(j, kf_out_lp[j]);
+    }
+    block->output[3][i] = settings.dac_code(3, kf_out_lp[3]);
+  }
+}
+
 void Process(IOBuffer::Block* block, size_t size) {
 #ifdef PROFILE_INTERRUPT
   ScopedDebugPinToggler toggler;
 #endif  // PROFILE_INTERRUPT
+
+  // Keyframer app mode: owns all 4 outputs; bypass the normal Tides path.
+  if (settings.state().app_mode == APP_MODE_KEYFRAMER) {
+    ProcessKeyframer(block, size);
+    return;
+  }
+
   const State& state = settings.state();
   const RampMode ramp_mode = RampMode(state.mode);
   const OutputMode output_mode = OutputMode(state.output_mode);
@@ -321,10 +399,13 @@ void Init() {
   bool freshly_baked = !settings.Init();
 
   cv_reader.Init(&settings);
-  
+
   previous_output_mode = OutputMode(settings.state().output_mode);
 
-  ui.Init(&settings, &factory_test);
+  keyframer.Init(&settings.mutable_state()->bank);
+  std::fill(&kf_out_lp[0], &kf_out_lp[kNumCvOutputs], 0.0f);
+
+  ui.Init(&settings, &factory_test, &keyframer);
   factory_test.Init(&settings, &cv_reader, &gate_inputs, &ui.switches());
 
   if (freshly_baked && !skip_factory_test) {

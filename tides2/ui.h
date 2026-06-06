@@ -36,6 +36,7 @@
 #include "tides2/drivers/leds.h"
 #include "tides2/drivers/switches.h"
 
+#include "tides2/keyframer.h"
 #include "tides2/settings.h"
 
 namespace tides {
@@ -44,7 +45,8 @@ enum UiMode {
   UI_MODE_NORMAL,
   UI_MODE_CALIBRATION_C1,
   UI_MODE_CALIBRATION_C3,
-  UI_MODE_FACTORY_TEST
+  UI_MODE_FACTORY_TEST,
+  UI_MODE_KEYFRAME,
 };
 
 class FactoryTest;
@@ -54,7 +56,7 @@ class Ui {
   Ui() { }
   ~Ui() { }
   
-  void Init(Settings* settings, FactoryTest* factory_test);
+  void Init(Settings* settings, FactoryTest* factory_test, Keyframer* keyframer);
   void Poll();
   void DoEvents();
   
@@ -77,9 +79,13 @@ class Ui {
   uint32_t press_time_[SWITCH_LAST];
   bool ignore_release_[SWITCH_LAST];
   
-  Settings* settings_;
+  Settings*    settings_;
   FactoryTest* factory_test_;
-  
+  Keyframer*   keyframer_;
+
+  uint32_t add_blink_time_;  // ms timestamp of last ADD (for LED_MODE flash)
+  uint32_t del_blink_time_;  // ms timestamp of last DELETE (for LED_RANGE flash)
+
   UiMode mode_;
 
   static const LedColor palette_[4];

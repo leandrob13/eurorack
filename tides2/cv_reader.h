@@ -53,6 +53,12 @@ class CvReader {
   inline bool fm_cv_thresholded() const {
     return cv_adc_.float_value(CV_ADC_CHANNEL_FM) < -0.17f;
   }
+
+  // Read-only access to the underlying ADC drivers.
+  // ProcessKeyframer uses these to read SHAPE pot and SHAPE CV separately,
+  // since CvReader::Read normally fuses them into parameters.shape.
+  inline const PotsAdc& pots() const { return pots_adc_; }
+  inline const CvAdc&   cv()   const { return cv_adc_; }
   
   inline float CenterDetent(float x) const {
     if (x < 0.49f) {

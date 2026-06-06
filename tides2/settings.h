@@ -33,6 +33,7 @@
 #include "stmlib/system/storage.h"
 
 #include "tides2/io_buffer.h"
+#include "tides2/keyframer.h"
 
 namespace tides {
 
@@ -64,9 +65,11 @@ struct State {
   uint8_t range;
   uint8_t output_mode;
   uint8_t color_blind;
-  uint8_t padding[4];
-  
-  enum { tag = 0x54415453 };  // STAT
+  uint8_t app_mode;       // AppMode: 0 = tides, 1 = keyframer
+  uint8_t padding[3];
+  KeyframeBank bank;
+
+  enum { tag = 0x4B524D52 };  // KRMR — changed from STAT to force re-init
 };
 
 class Settings {

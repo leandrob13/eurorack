@@ -65,10 +65,13 @@ bool Settings::Init() {
   persistent_data_.adc_calibration[1].scale = -96.0f;
   persistent_data_.adc_calibration[1].offset = +0.0f;
   
-  state_.mode = 1;
-  state_.range = 2;
+  state_.mode        = 1;
+  state_.range       = 2;
   state_.output_mode = 0;
-  
+  state_.app_mode    = APP_MODE_TIDES;
+  state_.bank.output_bipolar  = 1;  // default: bipolar +-5 V
+  state_.bank.num_keyframes   = 0;
+
   bool success = chunk_storage_.Init(&persistent_data_, &state_);
   
   if (success) {
@@ -89,6 +92,9 @@ bool Settings::Init() {
     CONSTRAIN(state_.mode, 0, 3);
     CONSTRAIN(state_.range, 0, 2);
     CONSTRAIN(state_.output_mode, 0, 3);
+    CONSTRAIN(state_.app_mode, 0, 1);
+    CONSTRAIN(state_.bank.output_bipolar, 0, 1);
+    CONSTRAIN(state_.bank.num_keyframes, 0, kKFMaxKeyframes);
   }
   
   return success;
