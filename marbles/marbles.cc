@@ -88,12 +88,14 @@ TB3PoSequencer tb3po;
 uint8_t prev_x_deja_vu = DEJA_VU_OFF;
 float prev_grids_ramp = 0.0f;
 
-// External-clock watchdog (Grids mode). Counts samples since the last rising
-// edge on the T-section clock input; when the gap exceeds ~2× the previous
-// clock period, force the TB-3PO gate off so a stopped upstream sequencer
+// External-clock watchdogs (Grids mode). Each counter tracks samples since
+// the last rising edge on its clock input. When the gap exceeds ~2× the last
+// observed period, TB-3PO's gate is forced off so a stopped upstream sequencer
 // can't latch downstream VCAs/ADSRs open.
 uint32_t t_clock_silence_samples = 0;
 uint32_t t_clock_last_period_samples = kSampleRate / 2;  // 500 ms initial guess
+uint32_t x_clock_silence_samples = 0;
+uint32_t x_clock_last_period_samples = kSampleRate / 2;
 
 // Default interrupt handlers.
 extern "C" {
@@ -526,11 +528,11 @@ void Process(IOBuffer::Block* block, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     float ramp = ramp_buffer[i];
     if (grids_mode) {
-      // External-clock stall watchdog. ramps.master is driven by the T-clock
-      // via ramp_extractor; when that clock stops, the ramp freezes and the
-      // half-cycle trigger that releases tb3po.gate_ never arrives. Adapt the
-      // threshold to ~2× the last observed clock period, clamped so we don't
-      // false-trigger between slow pulses or wait forever at fast tempos.
+      bool x_ext = (xy_clock_source == CLOCK_SOURCE_EXTERNAL);
+
+      // T-section stall watchdog. Adapts to ~2× the last T-clock period.
+      // ForceGateOff is skipped when the X clock jack is driving TB-3PO
+      // (x_ext), because T stopping should not latch the bassline gate.
       if (block->input_patched[0]) {
         if (t_clock[i] & GATE_FLAG_RISING) {
           if (t_clock_silence_samples > 0) {
@@ -540,14 +542,14 @@ void Process(IOBuffer::Block* block, size_t size) {
         } else {
           uint32_t threshold = t_clock_last_period_samples * 2;
           if (threshold < static_cast<uint32_t>(kSampleRate / 8)) {
-            threshold = kSampleRate / 8;        // 125 ms floor
+            threshold = kSampleRate / 8;
           }
           if (threshold > static_cast<uint32_t>(kSampleRate * 2)) {
-            threshold = kSampleRate * 2;        // 2 s ceiling
+            threshold = kSampleRate * 2;
           }
           if (t_clock_silence_samples < threshold) {
             ++t_clock_silence_samples;
-            if (t_clock_silence_samples == threshold) {
+            if (t_clock_silence_samples == threshold && !x_ext) {
               tb3po.ForceGateOff();
             }
           }
@@ -555,18 +557,47 @@ void Process(IOBuffer::Block* block, size_t size) {
       } else {
         t_clock_silence_samples = 0;
       }
-      // ramps.master in Grids mode is the X-section step ramp
-      // (grids_pulse_ + master_phase_) / 6, cycling 0→1 once per 16th note.
-      // A downward jump signals a step boundary (and the rising X1 edge); a
-      // 0→1 crossing of 0.5 marks the falling X1 edge (half-step / gate-off).
-      bool step_boundary = ramp < prev_grids_ramp - 0.5f;
-      bool half_cycle = prev_grids_ramp < 0.5f && ramp >= 0.5f;
-      if (step_boundary) {
-        tb3po.Tick(tb3po_reset_pending);
-        tb3po_reset_pending = false;
-      }
-      if (half_cycle) {
-        tb3po.TickHalfCycle();
+
+      if (x_ext) {
+        // X clock jack drives TB-3PO: rising edge → new step, falling → gate off.
+        if (xy_clock[i] & GATE_FLAG_RISING) {
+          if (x_clock_silence_samples > 0) {
+            x_clock_last_period_samples = x_clock_silence_samples;
+          }
+          x_clock_silence_samples = 0;
+          tb3po.Tick(tb3po_reset_pending);
+          tb3po_reset_pending = false;
+        } else {
+          if (xy_clock[i] & GATE_FLAG_FALLING) {
+            tb3po.TickHalfCycle();
+          }
+          uint32_t threshold = x_clock_last_period_samples * 2;
+          if (threshold < static_cast<uint32_t>(kSampleRate / 8)) {
+            threshold = kSampleRate / 8;
+          }
+          if (threshold > static_cast<uint32_t>(kSampleRate * 2)) {
+            threshold = kSampleRate * 2;
+          }
+          if (x_clock_silence_samples < threshold) {
+            ++x_clock_silence_samples;
+            if (x_clock_silence_samples == threshold) {
+              tb3po.ForceGateOff();
+            }
+          }
+        }
+      } else {
+        x_clock_silence_samples = 0;
+        // ramps.master in Grids mode cycles 0→1 once per 16th note.
+        // Downward jump = step boundary (Tick); 0.5 crossing = gate-off (TickHalfCycle).
+        bool step_boundary = ramp < prev_grids_ramp - 0.5f;
+        bool half_cycle = prev_grids_ramp < 0.5f && ramp >= 0.5f;
+        if (step_boundary) {
+          tb3po.Tick(tb3po_reset_pending);
+          tb3po_reset_pending = false;
+        }
+        if (half_cycle) {
+          tb3po.TickHalfCycle();
+        }
       }
       tb3po.StepSlide();
     }
@@ -579,7 +610,11 @@ void Process(IOBuffer::Block* block, size_t size) {
     float vx2 = *v++;
     float vx3 = *v++;
     float vy  = *v++;
-    float x1 = grids_mode ? (ramp < 0.5f ? 5.0f : 0.0f)             : vx1;
+    float x1 = grids_mode
+        ? ((xy_clock_source == CLOCK_SOURCE_EXTERNAL)
+           ? (xy_clock[i] & GATE_FLAG_HIGH ? 5.0f : 0.0f)
+           : (ramp < 0.5f ? 5.0f : 0.0f))
+        : vx1;
     float x2 = grids_mode ? tb3po.pitch_volts()                     : vx2;
     float x3 = grids_mode ? (tb3po.gate()   ? 5.0f : 0.0f)          : vx3;
     float y  = grids_mode ? (tb3po.accent() ? 5.0f : 0.0f)          : vy;
