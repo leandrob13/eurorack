@@ -14,16 +14,15 @@ All modules build out of their own subdirectory using a shared make include (`st
 
 The toolchain path is read from the `MI_TOOLCHAIN_PATH` env var (with the in-tree default `gcc-arm-none-eabi-4_8-2013q4/` baked into `stmlib/makefile.inc`). Set `MI_TOOLCHAIN_PATH` to that directory before running `make` if it's not in your environment.
 
-Run make from the module directory (not the repo root). For Marbles:
+Run make from the **repo root** using `-f <module>/makefile`. For Marbles:
 
 ```
-cd marbles
-make                 # compile to ELF/HEX into ../build/marbles/
-make bin             # produce raw .bin
-make wav             # encode .bin into a QPSK .wav firmware update file
-make clean
-make size            # print firmware size summary
-make disassemble     # dump LSS / top symbols
+make -f marbles/makefile wav      # full build + encode .wav (the normal target)
+make -f marbles/makefile          # compile only (ELF/HEX into build/marbles/)
+make -f marbles/makefile bin      # produce raw .bin
+make -f marbles/makefile clean
+make -f marbles/makefile size
+make -f marbles/makefile disassemble
 ```
 
 The `wav` target runs `stm_audio_bootloader/qpsk/encoder.py` with the module-appropriate sample rate / baud parameters baked into each module's `makefile`. That `.wav` is what ships in GitHub releases (tag pattern e.g. `v0.1.0-tides`, `v0.4.0-beta`, etc. — see `git ls-remote --tags`).
