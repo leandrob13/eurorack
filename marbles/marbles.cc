@@ -656,7 +656,7 @@ void Init() {
       sizeof(loop_length) / sizeof(int), 0.25f, false);
   cv_reader.Init(settings.mutable_calibration_data());
   scale_recorder.Init();
-  ui.Init(&settings, &cv_reader, &scale_recorder, &clock_inputs);
+  ui.Init(&settings, &cv_reader, &scale_recorder, &clock_inputs, &tb3po);
   
   if (settings.freshly_baked()) {
     settings.ProgramOptionBytes();

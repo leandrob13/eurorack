@@ -52,9 +52,10 @@ const int kNumScales = 6;
 struct PersistentData {
   CalibrationData calibration_data;
   Scale scale[kNumScales];
-  
-  uint8_t padding[16];
-  
+
+  uint16_t tb3po_bank[4];
+  uint8_t padding[8];
+
   enum { tag = 0x494C4143 };
 };
 
@@ -91,7 +92,8 @@ struct State {
   // cycle. Edge-triggered: written on the x_deja_vu OFF → ON|LOCKED edge.
   uint16_t tb3po_seed;
 
-  uint8_t padding[3];
+  uint8_t tb3po_active_slot;
+  uint8_t padding[2];
 
   enum { tag = 0x54415453 };
 };
@@ -135,6 +137,10 @@ class Settings {
   
   inline const PersistentData& persistent_data() const {
     return persistent_data_;
+  }
+
+  inline PersistentData* mutable_persistent_data() {
+    return &persistent_data_;
   }
 
   inline bool freshly_baked() const {

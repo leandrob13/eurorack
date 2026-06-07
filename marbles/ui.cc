@@ -35,6 +35,8 @@
 #include "marbles/drivers/clock_inputs.h"
 #include "marbles/cv_reader.h"
 #include "marbles/scale_recorder.h"
+#include "marbles/random/t_generator.h"
+#include "marbles/tb3po/tb3po_sequencer.h"
 
 namespace marbles {
 
@@ -58,11 +60,13 @@ void Ui::Init(
     Settings* settings,
     CvReader* cv_reader,
     ScaleRecorder* scale_recorder,
-    ClockInputs* clock_inputs) {
+    ClockInputs* clock_inputs,
+    TB3PoSequencer* tb3po) {
   settings_ = settings;
   cv_reader_ = cv_reader;
   scale_recorder_ = scale_recorder;
   clock_inputs_ = clock_inputs;
+  tb3po_ = tb3po;
   
   leds_.Init();
   switches_.Init();
@@ -207,7 +211,15 @@ void Ui::UpdateLEDs() {
             LED_T_DEJA_VU,
             DejaVuColor(DejaVuState(state.t_deja_vu), deja_vu_lock_));
         
-        leds_.set(LED_X_CONTROL_MODE, MakeColor(state.x_control_mode, cb));
+        if (state.t_model == T_GENERATOR_MODEL_GRIDS) {
+          uint8_t slot = state.tb3po_active_slot;
+          LedColor slot_color = slot < 3
+              ? palette_[slot]
+              : (slow_blink ? LED_COLOR_GREEN : LED_COLOR_OFF);
+          leds_.set(LED_X_CONTROL_MODE, slot_color);
+        } else {
+          leds_.set(LED_X_CONTROL_MODE, MakeColor(state.x_control_mode, cb));
+        }
         leds_.set(
             LED_X_DEJA_VU,
             DejaVuColor(DejaVuState(state.x_deja_vu), deja_vu_lock_));
@@ -258,6 +270,17 @@ void Ui::UpdateLEDs() {
         const bool l = blink && state.explicit_reset;
         leds_.set(LED_T_MODEL, l ? LED_COLOR_YELLOW : LED_COLOR_OFF);
         leds_.set(LED_X_CONTROL_MODE, l ? LED_COLOR_YELLOW : LED_COLOR_OFF);
+      }
+      break;
+
+    case UI_MODE_TB3PO_SLOT_FEEDBACK:
+      {
+        uint8_t slot = state.tb3po_active_slot;
+        LedColor slot_color = slot < 3
+            ? palette_[slot]
+            : (fast_blink ? LED_COLOR_GREEN : LED_COLOR_OFF);
+        leds_.set(LED_X_CONTROL_MODE, slot_color);
+        leds_.set(LED_X_RANGE, blink ? slot_color : LED_COLOR_OFF);
       }
       break;
   }
@@ -358,8 +381,15 @@ void Ui::OnSwitchReleased(const Event& e) {
       break;
     
     case SWITCH_X_MODE:
-      state->x_control_mode = (state->x_control_mode + 1) % 3;
-      SaveState();
+      if (state->t_model == T_GENERATOR_MODEL_GRIDS) {
+        uint8_t slot = state->tb3po_active_slot;
+        settings_->mutable_persistent_data()->tb3po_bank[slot] = state->tb3po_seed;
+        settings_->SavePersistentData();
+        mode_ = UI_MODE_TB3PO_SLOT_FEEDBACK;
+      } else {
+        state->x_control_mode = (state->x_control_mode + 1) % 3;
+        SaveState();
+      }
       break;
       
     case SWITCH_X_EXT:
@@ -389,6 +419,16 @@ void Ui::OnSwitchReleased(const Event& e) {
     case SWITCH_X_RANGE:
       if (mode_ >= UI_MODE_CALIBRATION_1 && mode_ <= UI_MODE_CALIBRATION_4) {
         NextCalibrationStep();
+      } else if (state->t_model == T_GENERATOR_MODEL_GRIDS) {
+        uint8_t slot = (state->tb3po_active_slot + 1) % 4;
+        state->tb3po_active_slot = slot;
+        uint16_t banked = settings_->persistent_data().tb3po_bank[slot];
+        if (banked != 0) {
+          state->tb3po_seed = banked;
+          tb3po_->set_seed(banked);
+        }
+        SaveState();
+        mode_ = UI_MODE_TB3PO_SLOT_FEEDBACK;
       } else if (e.data >= kLongPressDuration) {
         if (mode_ == UI_MODE_NORMAL) {
           mode_ = UI_MODE_SELECT_SCALE;
@@ -399,8 +439,8 @@ void Ui::OnSwitchReleased(const Event& e) {
         if (!state->x_register_mode) {
           state->x_range = (state->x_range + 1) % 3;
         }
+        SaveState();
       }
-      SaveState();
       break;
   }
 }
@@ -498,6 +538,11 @@ void Ui::DoEvents() {
   }
   if (mode_ == UI_MODE_SELECT_SCALE || mode_ == UI_MODE_DISPLAY_RESET_MODE) {
     if (queue_.idle_time() > 4000) {
+      mode_ = UI_MODE_NORMAL;
+      queue_.Touch();
+    }
+  } else if (mode_ == UI_MODE_TB3PO_SLOT_FEEDBACK) {
+    if (queue_.idle_time() > 1000) {
       mode_ = UI_MODE_NORMAL;
       queue_.Touch();
     }

@@ -43,6 +43,7 @@ namespace marbles {
 class ClockInputs;
 class CvReader;
 class ScaleRecorder;
+class TB3PoSequencer;
 
 enum UiMode {
   UI_MODE_NORMAL,
@@ -54,6 +55,7 @@ enum UiMode {
   UI_MODE_CALIBRATION_4,
   UI_MODE_DISPLAY_RESET_MODE,
   UI_MODE_PANIC,
+  UI_MODE_TB3PO_SLOT_FEEDBACK,
 };
 
 enum FactoryTestingCommand {
@@ -81,7 +83,8 @@ class Ui {
       Settings* settings,
       CvReader* cv_reader,
       ScaleRecorder* scale_recorder,
-      ClockInputs* clock_inputs);
+      ClockInputs* clock_inputs,
+      TB3PoSequencer* tb3po);
   void Poll();
   void DoEvents();
   void FlushEvents();
@@ -135,6 +138,8 @@ class Ui {
   
   bool setting_modification_flag_;
   bool deja_vu_lock_;
+
+  TB3PoSequencer* tb3po_;
   
   bool output_test_mode_;
   uint16_t output_test_forced_dac_code_[4];

@@ -191,9 +191,13 @@ Those parameters are now driven entirely by CV inputs.
 | `grids_hh_density` | No | Superseded by fixed-base + JITTER CV |
 | `grids_chaos` | No | Superseded by Deja Vu knob + CV |
 | `tb3po_seed` | Yes — TB-3PO acid seed | Persisted; survives power cycle when locked |
+| `tb3po_active_slot` | Yes — active bank slot (0–3) | Which of the 4 saved seeds is currently selected |
 
-Unused fields remain in `State` for ABI stability. The TB-3PO seed reuses
-2 of the 5 padding bytes; remaining padding is 3 bytes.
+Unused fields remain in `State` for ABI stability. The TB-3PO seed and active slot consume
+3 of the 5 padding bytes; remaining padding is 2 bytes.
+
+`PersistentData` carries `uint16_t tb3po_bank[4]` (8 bytes) — the 4-slot seed bank, stored
+in what was previously the 16-byte `PersistentData::padding`; 8 bytes remain.
 
 ---
 
@@ -281,7 +285,7 @@ overwritten before the DAC write.
 | Main panel DEJA VU knob | unused by TB-3PO | Consumed by the T-section in Grids mode (bipolar around 12 o'clock: CCW = drum chaos / Euclidean T2 fills, CW = Euclidean rotation). `tb3po` does not read `deja_vu_raw` |
 | Main panel DEJA VU CV jack | reset only | In Grids mode `parameters[ADC_CHANNEL_DEJA_VU_AMOUNT]` is forced to pot-only so the CV's analogue value doesn't contaminate chaos / rotation or the UI lock deadband — the jack is consumed purely as a reset trigger |
 
-### Seed Persistence
+### Seed Persistence and Pattern Bank
 
 - `State.tb3po_seed` (uint16) lives in `settings.cc Init()` defaults and rides
   along with the normal `chunk_storage_` save/load path.
@@ -296,6 +300,12 @@ overwritten before the DAC write.
 - TB-3PO uses `GridsRandom` as its RNG. The shared LFSR state is
   saved/restored around each regeneration so PatternGenerator's pertubation
   stream stays deterministic.
+- **4-slot bank** in `PersistentData.tb3po_bank[4]`. In Grids mode:
+  - **Short press `X MODE`** → saves `state.tb3po_seed` to the active slot and calls `SavePersistentData()`.
+  - **Short press `X RANGE`** → advances `state.tb3po_active_slot` (0→1→2→3→0); if the new slot is non-zero, loads that seed into both `state.tb3po_seed` and the live `TB3PoSequencer` immediately.
+  - Empty slots (value 0) are skipped on load — the current seed is left unchanged.
+  - `UI_MODE_TB3PO_SLOT_FEEDBACK` activates for 1 s after either gesture: `LED_X_CONTROL_MODE` lights the slot color (green/yellow/red/blink-green for slots 0–3), `LED_X_RANGE` blinks the same color.
+  - During normal Grids operation `LED_X_CONTROL_MODE` shows the active slot color (replaces the unused `x_control_mode` display).
 
 ### Slide IIR
 
