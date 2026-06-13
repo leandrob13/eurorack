@@ -8,10 +8,10 @@
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,7 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-// 
+//
 // See http://creativecommons.org/licenses/MIT/ for more information.
 //
 // -----------------------------------------------------------------------------
@@ -43,14 +43,23 @@ const size_t kNumChannels = 6;
 class IOBuffer {
  public:
   struct Block {
+    float cv[kNumChannels];
+    float slider[kNumChannels];
     float cv_slider[kNumChannels];
     float pot[kNumChannels];
     bool input_patched[kNumChannels];
-    
+
     stmlib::GateFlags input[kNumChannels][kBlockSize];
     uint16_t output[kNumChannels][kBlockSize];
+
+    inline float cv_slider_alt(size_t i, float slider_min, float slider_range, float cv_min, float cv_range) const {
+      float combined_value = (cv_range * cv[i] + cv_min)
+        + (slider_range * slider[i] + slider_min);
+      CONSTRAIN(combined_value, -1.0f, 1.999995f);
+      return combined_value;
+    }
   };
-  
+
   struct Slice {
     Block* block;
     size_t frame_index;
@@ -60,20 +69,20 @@ class IOBuffer {
 
   IOBuffer() { }
   ~IOBuffer() { }
-  
+
   void Init() {
     io_block_ = 0;
     render_block_ = kNumBlocks / 2;
     io_frame_ = 0;
   }
-  
+
   inline void Process(ProcessFn* fn) {
     while (render_block_ != io_block_) {
       (*fn)(&block_[render_block_], kBlockSize);
       render_block_ = (render_block_ + 1) % kNumBlocks;
     }
   }
-  
+
   inline Slice NextSlice(size_t size) {
     Slice s;
     s.block = &block_[io_block_];
@@ -85,18 +94,18 @@ class IOBuffer {
     }
     return s;
   }
-  
+
   inline bool new_block() const {
     return io_frame_ == 0;
   }
-  
+
  private:
   Block block_[kNumBlocks];
-  
+
   size_t io_frame_;
   volatile size_t io_block_;
   volatile size_t render_block_;
-  
+
   DISALLOW_COPY_AND_ASSIGN(IOBuffer);
 };
 

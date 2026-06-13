@@ -36,6 +36,7 @@
 #include "stages/drivers/gate_inputs.h"
 #include "stages/cv_reader.h"
 #include "stages/resources.h"
+#include "stages/segment_generator.h"
 #include "stages/settings.h"
 #include "stages/ui.h"
 

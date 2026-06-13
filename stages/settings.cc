@@ -28,6 +28,7 @@
 
 #include "stages/settings.h"
 
+#include <math.h>
 #include <algorithm>
 
 #include "stmlib/system/storage.h"
@@ -38,7 +39,6 @@ using namespace std;
 
 #define FIX_OUTLIER(destination, expected_value) if (fabsf(destination / expected_value - 1.0f) > 0.1f) { destination = expected_value; }
 #define FIX_OUTLIER_ABSOLUTE(destination, expected_value) if (fabsf(destination - expected_value) > 0.1f) { destination = expected_value; }
-
 
 bool Settings::Init() {
   ChannelCalibrationData default_calibration_data;
@@ -59,6 +59,7 @@ bool Settings::Init() {
       0);
   
   state_.color_blind = 0;
+  state_.multimode = (uint8_t) MULTI_MODE_STAGES;
   
   bool success = chunk_storage_.Init(&persistent_data_, &state_);
   
@@ -72,10 +73,6 @@ bool Settings::Init() {
       FIX_OUTLIER(c->dac_scale, -32263.0f);
       FIX_OUTLIER(c->adc_scale, -1.0f);
 
-      uint8_t type_bits = state_.segment_configuration[i] & 0x3;
-      uint8_t loop_bit = state_.segment_configuration[i] & 0x4;
-      CONSTRAIN(type_bits, 0, 3);
-      state_.segment_configuration[i] = type_bits | loop_bit;
     }
   }
 

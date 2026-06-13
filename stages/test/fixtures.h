@@ -23,6 +23,7 @@
 #include "stmlib/utils/gate_flags.h"
 
 #include "stages/segment_generator.h"
+#include "stages/modes.h"
 
 namespace stages {
 
@@ -36,11 +37,11 @@ class PulseGenerator {
     previous_state_ = 0;
   }
   ~PulseGenerator() { }
-  
+
   inline bool empty() const {
     return pulses_.size() == 0;
   }
-  
+
   void AddPulses(int total_duration, int on_duration, int num_repetitions) {
     Pulse p;
     p.total_duration = total_duration;
@@ -48,7 +49,24 @@ class PulseGenerator {
     p.num_repetitions = num_repetitions;
     pulses_.push_back(p);
   }
-  
+
+  void AddFreq(int count, float frequency, float pw, long sample_rate) {
+    int last_dur = 0;
+    int pulse_count = 0;
+    for (int i=1; i<count; i++) {
+      long end = static_cast<long>(i * sample_rate / frequency);
+      long start = static_cast<long>((i - 1) * sample_rate / frequency);
+      int dur = static_cast<int>(end - start);
+      if ((pulse_count > 0 && dur != last_dur) || i == count -1) {
+        int on_dur = static_cast<int>(dur * pw);
+        this->AddPulses(dur, on_dur, pulse_count);
+        pulse_count=0;
+      }
+      last_dur = dur;
+      pulse_count++;
+    }
+  }
+
   void CreateTestPattern() {
     AddPulses(16000, 4000, 3);
     AddPulses(16000, 8000, 3);
@@ -56,7 +74,7 @@ class PulseGenerator {
     AddPulses(32000, 16000, 3);
     AddPulses(32000, 24000, 3);
   }
-  
+
   void Render(GateFlags* clock, size_t size) {
     while (size--) {
       bool current_state = pulses_.size() && counter_ < pulses_[0].on_duration;
@@ -71,7 +89,7 @@ class PulseGenerator {
       previous_state_ = *clock++ = ExtractGateFlags(previous_state_, current_state);
     }
   }
-  
+
  private:
   struct Pulse {
     int total_duration;
@@ -80,9 +98,9 @@ class PulseGenerator {
   };
   int counter_;
   GateFlags previous_state_;
-  
+
   vector<Pulse> pulses_;
-  
+
   DISALLOW_COPY_AND_ASSIGN(PulseGenerator);
 };
 
@@ -90,19 +108,20 @@ class PulseGenerator {
 class SegmentGeneratorTest {
  public:
    SegmentGeneratorTest() {
-    segment_generator_.Init();
+    note_quantizer.Init(13, 0.03f, false);
+    segment_generator_.Init(MULTI_MODE_STAGES_ADVANCED, &note_quantizer);
   }
   ~SegmentGeneratorTest() { }
 
   PulseGenerator* pulses() { return &pulse_generator_; }
   SegmentGenerator* generator() { return &segment_generator_; }
-  
+
   struct SegmentParameters {
     int index;
     float primary;
     float secondary;
   };
-  
+
   void set_segment_parameters(int index, float primary, float secondary) {
     SegmentParameters p;
     p.index = index;
@@ -110,20 +129,20 @@ class SegmentGeneratorTest {
     p.secondary = secondary;
     segment_parameters_.push_back(p);
   }
-  
+
   void Render(const char* file_name, int sr) {
     if (pulse_generator_.empty()) {
       pulse_generator_.CreateTestPattern();
     }
-    
+
     stmlib::WavWriter wav_writer(4, sr, 20);
     wav_writer.Open(file_name);
-    
+
     for (int i = 0; i < sr * 20; ++i) {
       GateFlags f;
       pulse_generator_.Render(&f, 1);
       SegmentGenerator::Output out;
-      
+
       for (size_t j = 0; j < segment_parameters_.size(); ++j) {
         const SegmentParameters& p = segment_parameters_[j];
         segment_generator_.set_segment_parameters(
@@ -131,7 +150,7 @@ class SegmentGeneratorTest {
             p.primary >= 0.0f ? p.primary : wav_writer.triangle(-p.primary),
             p.secondary >= 0.0f ? p.secondary : wav_writer.triangle(-p.secondary));
       }
-      
+
       segment_generator_.Process(&f, &out, 1);
       float s[4];
       s[0] = f & GATE_FLAG_HIGH ? 0.8f : 0.0f;
@@ -141,12 +160,13 @@ class SegmentGeneratorTest {
       wav_writer.Write(s, 4, 32767.0f);
     }
   }
-  
+
  private:
   SegmentGenerator segment_generator_;
   PulseGenerator pulse_generator_;
   vector<SegmentParameters> segment_parameters_;
-  
+  HysteresisQuantizer2 note_quantizer;
+
   DISALLOW_COPY_AND_ASSIGN(SegmentGeneratorTest);
 };
 

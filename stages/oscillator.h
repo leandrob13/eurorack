@@ -8,10 +8,10 @@
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,7 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-// 
+//
 // See http://creativecommons.org/licenses/MIT/ for more information.
 //
 // -----------------------------------------------------------------------------
@@ -51,7 +51,7 @@ enum OscillatorShape {
 };
 
 const float kMaxFrequency = 0.25f;
-const float kMinFrequency = 0.00001f;
+const float kMinFrequency = 0.0f; //0.00001f;
 
 inline float ThisBlepSample(float t) {
   return 0.5f * t * t;
@@ -77,7 +77,7 @@ class Oscillator {
  public:
   Oscillator() { }
   ~Oscillator() { }
-  
+
   void Init() {
     phase_ = 0.5f;
     next_sample_ = 0.0f;
@@ -93,7 +93,7 @@ class Oscillator {
   void Render(float frequency, float pw, float* out, size_t size) {
     Render<shape, false, false>(frequency, pw, NULL, out, size);
   }
-  
+
   template<OscillatorShape shape>
   void Render(
       float frequency,
@@ -115,7 +115,7 @@ class Oscillator {
       const float* external_fm,
       float* out,
       size_t size) {
-    
+
     if (!has_external_fm) {
       if (!through_zero_fm) {
         CONSTRAIN(frequency, kMinFrequency, kMaxFrequency);
@@ -124,12 +124,12 @@ class Oscillator {
       }
       CONSTRAIN(pw, fabsf(frequency) * 2.0f, 1.0f - 2.0f * fabsf(frequency))
     }
-    
+
     stmlib::ParameterInterpolator fm(&frequency_, frequency, size);
     stmlib::ParameterInterpolator pwm(&pw_, pw, size);
-  
+
     float next_sample = next_sample_;
-  
+
     while (size--) {
       float this_sample = next_sample;
       next_sample = 0.0f;
@@ -149,7 +149,7 @@ class Oscillator {
         CONSTRAIN(pw, fabsf(frequency) * 2.0f, 1.0f - 2.0f * fabsf(frequency))
       }
       phase_ += frequency;
-      
+
       if (shape <= OSCILLATOR_SHAPE_SAW) {
         if (phase_ >= 1.0f) {
           phase_ -= 1.0f;
@@ -238,7 +238,7 @@ class Oscillator {
           high_ = true;
         }
         next_sample += phase_ < pw ? 0.0f : 1.0f;
-        
+
         if (shape == OSCILLATOR_SHAPE_SQUARE_TRIANGLE) {
           const float integrator_coefficient = frequency * 0.0625f;
           this_sample = 128.0f * (this_sample - 0.5f);
@@ -262,7 +262,7 @@ class Oscillator {
     }
     next_sample_ = next_sample;
   }
-  
+
  private:
   // Oscillator state.
   float phase_;
@@ -274,7 +274,7 @@ class Oscillator {
   // For interpolation of parameters.
   float frequency_;
   float pw_;
-  
+
   DISALLOW_COPY_AND_ASSIGN(Oscillator);
 };
 

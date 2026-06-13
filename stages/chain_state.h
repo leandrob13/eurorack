@@ -8,10 +8,10 @@
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,7 +19,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-// 
+//
 // See http://creativecommons.org/licenses/MIT/ for more information.
 //
 // -----------------------------------------------------------------------------
@@ -29,6 +29,8 @@
 #ifndef STAGES_CHAIN_STATE_H_
 #define STAGES_CHAIN_STATE_H_
 
+#include "stages/quantizer.h"
+#include "stages/settings.h"
 #include "stmlib/stmlib.h"
 
 #include "stages/io_buffer.h"
@@ -40,6 +42,10 @@ const size_t kMaxChainSize = 6;
 const size_t kMaxNumChannels = kMaxChainSize * kNumChannels;
 const size_t kPacketSize = 24;
 
+const uint32_t kReinitKey = 0xffffffff;
+const uint32_t kReinitCount = 0xff;
+
+
 class SerialLink;
 class Settings;
 
@@ -47,23 +53,35 @@ class ChainState {
  public:
   ChainState() { }
   ~ChainState() { }
-  
+
   typedef uint8_t ChannelBitmask;
-  
-  void Init(SerialLink* left, SerialLink* right);
+
+  void Init(SerialLink* left, SerialLink* right, const Settings& settings);
   void Update(
       const IOBuffer::Block& block,
       Settings* settings,
       SegmentGenerator* segment_generator,
       SegmentGenerator::Output* out);
-  
+  void SuspendSwitches();
+
   // Index of the module in the chain, and size of the chain.
   inline size_t index() const { return index_; }
   inline size_t size() const { return size_; }
-  
-  inline bool discovering_neighbors() const { return discovering_neighbors_; }
-  inline bool ouroboros() const { return ouroboros_; }
-  
+
+  enum ChainStateStatus {
+    CHAIN_REINITIALIZING,
+    CHAIN_DISCOVERING_NEIGHBORS,
+    CHAIN_READY
+  };
+
+  void start_reinit() {
+    counter_ = 0;
+    status_ = CHAIN_REINITIALIZING;
+    request_.request = REQUEST_NONE;
+  }
+
+  inline ChainStateStatus status() const { return status_; }
+
   // Internally, we only store a loop bit for each channel - but the UI needs
   // to know more than that. It needs to know whether a channel with a loop bit
   // set to 1 is a loop start, a loop end, or self-looping channel. This
@@ -76,6 +94,9 @@ class ChainState {
     LOOP_STATUS_SELF
   };
 
+  inline bool input_patched(size_t i) const {
+    return (input_patched_[index_] >> i) & 1;
+  }
   inline LoopStatus loop_status(size_t i) const {
     return loop_status_[i];
   }
@@ -83,74 +104,145 @@ class ChainState {
   inline void set_local_switch_pressed(ChannelBitmask bitmask) {
     switch_pressed_[index_] = bitmask;
   }
-  
+
  private:
   void DiscoverNeighbors();
+  void StartReinit(const Settings& settings);
+  void Reinit(const Settings& settings);
 
   void TransmitRight();
   void TransmitLeft();
   void ReceiveRight();
   void ReceiveLeft();
-  
+
   void UpdateLocalState(
       const IOBuffer::Block& block,
       const Settings& settings,
       const SegmentGenerator::Output& last_out);
-  void UpdateLocalPotCvSlider(const IOBuffer::Block& block);
-  void Configure(SegmentGenerator* segment_generator);
+  void UpdateLocalPotCvSlider(
+      const IOBuffer::Block& block, const Settings& settings);
+  void Configure(SegmentGenerator* segment_generator, const Settings& settings);
   void PollSwitches();
   void BindRemoteParameters(SegmentGenerator* segment_generator);
   void BindLocalParameters(
-      const IOBuffer::Block& block, SegmentGenerator* segment_generator);
+      const IOBuffer::Block& block, SegmentGenerator* segment_generator,
+      const Settings& settings);
   void HandleRequest(Settings* settings);
-  
+
+  struct Loop {
+    int8_t start;
+    int8_t end;
+  };
+
   struct ChannelState {
     // 7 6 5 4 3 2 1 0
     // 8 4 2 1 8 4 2 1
     //
-    // S S S S I L T T
+    // S S S B I L T T
     //
-    // SSSS: index of the module sending this packet.
+    // SSS: index of the module sending this packet.
+    // B: bipolar enabled?
     // I: gate/trigger input patched?
     // L: loop enabled?
     // TT: segment type
     uint8_t flags;
     uint8_t pot;
     uint16_t cv_slider;
-    
+
     inline bool input_patched() const {
       return flags & 0x08;
     }
-    
+
     inline segment::Configuration configuration() const {
       segment::Configuration c;
       c.loop = flags & 0x04;
       c.type = segment::Type(flags & 0x03);
+      c.bipolar = flags & 0b00010000;
       return c;
     }
-    
-    inline size_t index() const {
-      return size_t(flags) >> 4;
+
+    inline segment::Configuration configuration(uint16_t local_config) {
+      segment::Configuration c = configuration();
+      c.range = segment::FreqRange(local_config >> 8 & 0x03);
+      c.quant_scale = local_config >> 12 & 0x03;
+      return c;
     }
-    
+
+    inline size_t index() const {
+      return (size_t(flags) >> 5) & 0b111;
+    }
+
     inline bool UpdateFlags(
         uint8_t index,
-        uint8_t configuration,
+        uint16_t configuration,
         bool input_patched) {
-      uint8_t new_flags = index << 4;
-      new_flags |= configuration;
+      uint8_t new_flags = index << 5;
+      new_flags |= configuration & 0b00000111;
       new_flags |= input_patched ? 0x08 : 0;
+      new_flags |= (configuration & 0b00001000) << 1;
       bool dirty = new_flags != flags;
       flags = new_flags;
       return dirty;
     }
   };
-  
-  struct Loop {
-    int8_t start;
-    int8_t end;
-  };
-  
+
+  ChannelState* local_channel(size_t i) {
+    return &channel_state_[local_channel_index(i)];
+  }
+
+  float cv_slider(const IOBuffer::Block &block, size_t i, uint16_t seg_config) {
+    // This was empirically found to have better performance than both an `if`
+    // and a `switch` with flipped cases.
+    switch (seg_config & 0x03) {
+      case segment::TYPE_RAMP:
+        if (loop_status_[i] == LOOP_STATUS_SELF) {
+          return block.cv_slider[i];
+        }
+        switch (seg_config & 0x0300) {
+          // If in slow range, set slider min to 16 seconds and max to ~13.4 minutes
+          case 0x0200:
+            return block.cv_slider_alt(
+                i,
+                1.0f,
+                0.98f,
+                0.0f,
+                1.0f);
+          // If in fast range, set slider range to 1 millisecond to ~2.2 seconds
+          case 0x0100:
+            return block.cv_slider_alt(
+                i,
+                0.0f,
+                0.6667f,
+                0.0f,
+                1.0f);
+          // If in default range, retain slider range of 1 millisecond to 16 seconds
+          default:
+            return block.cv_slider[i];
+      }
+      case segment::TYPE_TURING:
+        return block.cv_slider[i];
+      default:
+        {
+          uint8_t scale = seg_config >> 12 & 0x03;
+          const bool bipolar = is_bipolar(seg_config);
+          const bool att = (attenuate_ >> i) & 1;
+          const bool quantize = scale > 0;
+          const float pot = block.pot[i];
+          const float raw_cv = block.cv_slider_alt(
+              i,
+              (bipolar ? -1.0f : 0.0f) * (quantize ? 0.25f : 1.0f),
+              (bipolar ?  2.0f : 1.0f) * (quantize ? 0.25f : 1.0f),
+              0.0f,
+              att ? (bipolar ? 2.0f * pot - 1.0f : pot) : 1.0f);
+          if (quantize) {
+            return quantizers_[i].Process(raw_cv);
+          } else {
+            return raw_cv;
+          }
+        }
+    }
+  }
+
   struct LeftToRightPacket {
     uint8_t last_patched_channel;
     int8_t segment;
@@ -159,28 +251,27 @@ class ChainState {
     ChannelBitmask switch_pressed[kMaxChainSize];
     ChannelBitmask input_patched[kMaxChainSize];
   };
-  
+
   struct RightToLeftPacket {
     ChannelState channel[kNumChannels];
   };
-  
+
   enum Request {
     REQUEST_NONE,
-    REQUEST_SET_ALT_SEGMENT_TYPE = 0xfd,
     REQUEST_SET_SEGMENT_TYPE = 0xfe,
     REQUEST_SET_LOOP = 0xff
   };
-  
+
   struct RequestPacket {
     uint8_t request;
     uint8_t argument[4];
   };
-  
+
   struct DiscoveryPacket {
     uint32_t key;
     uint8_t counter;
   };
-  
+
   union Packet {
     RightToLeftPacket to_left;
     LeftToRightPacket to_right;
@@ -188,29 +279,25 @@ class ChainState {
     RequestPacket request;
     uint8_t bytes[kPacketSize];
   };
-  
+
   struct ParameterBinding {
     size_t generator;
     size_t source;
     size_t destination;
   };
-  
+
   inline size_t remote_channel_index(size_t i, size_t j) const {
     return i * kNumChannels + j;
   }
-  
+
   inline size_t local_channel_index(size_t i) const {
     return index_ * kNumChannels + i;
   }
-  
-  ChannelState* local_channel(size_t i) {
-    return &channel_state_[local_channel_index(i)];
-  }
-  
+
   ChannelState* remote_channel(size_t i, size_t j) {
     return &channel_state_[remote_channel_index(i, j)];
   }
-  
+
   inline void set_loop_status(int channel, int segment, Loop loop) {
     if (segment == loop.start) {
       loop_status_[channel] = segment == loop.end ?
@@ -221,25 +308,40 @@ class ChainState {
       loop_status_[channel] = LOOP_STATUS_NONE;
     }
   }
-  
+
+  template<typename T>
+  bool check_reinit(const T* p) {
+    const DiscoveryPacket* d = reinterpret_cast<const DiscoveryPacket*>(p);
+    return (d->key == kReinitKey) && (d->counter == kReinitCount);
+  }
+
   RequestPacket MakeLoopChangeRequest(size_t loop_start, size_t loop_end);
-  
+
+  Quantizer quantizers_[kNumChannels];
+
   size_t index_;
   size_t size_;
-  
+
   SerialLink* left_;
   SerialLink* right_;
-  
+
+  uint32_t leftKey;
+  uint32_t rightKey;
+
   ChannelState channel_state_[kMaxNumChannels];
+  uint16_t last_local_config_[kNumChannels];
   bool dirty_[kMaxNumChannels];
 
   int16_t switch_press_time_[kMaxNumChannels];
   uint16_t unpatch_counter_[kNumChannels];
   LoopStatus loop_status_[kNumChannels];
+  ChannelBitmask attenuate_;
+  ChannelBitmask process_cv_;
 
+  ChannelBitmask last_switch_pressed_[kMaxChainSize];
   ChannelBitmask switch_pressed_[kMaxChainSize];
   ChannelBitmask input_patched_[kMaxChainSize];
-  
+
   size_t rx_last_patched_channel_;
   size_t tx_last_patched_channel_;
   Loop rx_last_loop_;
@@ -248,20 +350,19 @@ class ChainState {
   SegmentGenerator::Output tx_last_sample_;
 
   RequestPacket request_;
-  
-  bool discovering_neighbors_;
-  bool ouroboros_;
+
+  ChainStateStatus status_;
   uint32_t counter_;
-  
+
   Packet left_tx_packet_;
   Packet right_tx_packet_;
   Packet left_rx_packet_[2];
   Packet right_rx_packet_[2];
-  
+
   size_t num_internal_bindings_;
   size_t num_bindings_;
   ParameterBinding binding_[kMaxNumChannels];
-  
+
   DISALLOW_COPY_AND_ASSIGN(ChainState);
 };
 
