@@ -158,6 +158,7 @@ void TGenerator::Init(RandomStream* random_stream, float sr) {
   fill(&streak_counter_[0], &streak_counter_[kMarkovHistorySize], 0);
   fill(&markov_history_[0], &markov_history_[kMarkovHistorySize], 0);
   markov_history_ptr_ = 0;
+  toggle_counter_ = 0;
   drum_pattern_step_ = 0;
   drum_pattern_index_ = 0;
 
@@ -272,6 +273,12 @@ int TGenerator::GenerateMarkov(const RandomVector& x) {
   return bitmask;
 }
 
+int TGenerator::GenerateToggle() {
+  int bitmask = 1 << (toggle_counter_ % kNumTChannels);
+  toggle_counter_ = (toggle_counter_ + 1) % kNumTChannels;
+  return bitmask;
+}
+
 int TGenerator::GenerateGrids(const RandomVector& x) {
   uint8_t state = PatternGenerator::state();
   master_gate_ = state & 0x02;
@@ -312,7 +319,11 @@ void TGenerator::ConfigureSlaveRamps(const RandomVector& x) {
     case T_GENERATOR_MODEL_MARKOV:
       ScheduleOutputPulses(x, GenerateMarkov(x));
       break;
-    
+
+    case T_GENERATOR_MODEL_TOGGLE:
+      ScheduleOutputPulses(x, GenerateToggle());
+      break;
+
     case T_GENERATOR_MODEL_GRIDS:
       ScheduleOutputPulses(x, GenerateGrids(x));
       break;
@@ -395,6 +406,7 @@ void TGenerator::Process(
     sequence_.Reset();
 
     divider_pattern_length_ = 0;
+    toggle_counter_ = 0;
     drum_pattern_step_ = kDrumPatternSize;
     if (model_ != T_GENERATOR_MODEL_DIVIDER) {
       RandomVector random_vector;

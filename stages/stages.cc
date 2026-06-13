@@ -42,6 +42,7 @@
 #include "stages/envelope.h"
 #include "stages/segment_generator.h"
 #include "stages/settings.h"
+#include "stages/synth_voice.h"
 #include "stages/ui.h"
 
 using namespace stages;
@@ -62,6 +63,7 @@ SegmentGenerator segment_generator[kNumChannels];
 Oscillator oscillator[kNumChannels];
 IOBuffer io_buffer;
 Envelope eg[kNumChannels];
+SynthVoice synth_voice;
 SerialLink left_link;
 SerialLink right_link;
 Settings settings;
@@ -356,6 +358,148 @@ void ProcessOuroboros(IOBuffer::Block* block, size_t size) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Synth voice mode.
+//
+// The six sections drive one monophonic voice (see stages/docs/synth_plan.md):
+//   ch0 OSC1, ch1 OSC2, ch2 FILTER, ch3 LFO, ch4 ADSR-2, ch5 ADSR-1.
+// Primary controls (slider/pot) are always live. Holding a section's button
+// re-tasks its slider/pot to a hidden "shift" parameter (latched in RAM here).
+// Discrete selections (tap-cycled) live in segment_configuration[] and are
+// owned by the UI (it is the only place allowed to write flash).
+// -----------------------------------------------------------------------------
+
+float synth_out[kNumChannels][kBlockSize];
+GateFlags synth_fm_gate[kBlockSize];
+
+// Frozen primary slider/pot per channel (held while the button is pressed so
+// the hidden-parameter gesture does not disturb the primary value).
+float synth_primary_slider[kNumChannels];
+float synth_primary_pot[kNumChannels];
+// Hidden shift parameters, latched while the button is held.
+float synth_hidden_pot[kNumChannels];
+float synth_hidden_slider[kNumChannels];
+float synth_fm[kBlockSize];
+
+void InitSynthState() {
+  for (size_t i = 0; i < kNumChannels; ++i) {
+    synth_primary_slider[i] = 0.5f;
+    synth_primary_pot[i] = 0.5f;
+    synth_hidden_slider[i] = 0.5f;
+    synth_hidden_pot[i] = 0.0f;
+  }
+  // Sensible hidden-parameter defaults.
+  synth_hidden_pot[1] = 0.0f;   // osc mix -> osc1 only
+  synth_hidden_slider[0] = 0.5f; // osc1 fine -> centred
+  synth_hidden_slider[1] = 0.5f; // osc2 fine -> centred
+  synth_hidden_pot[5] = 0.5f;   // env->filter -> 0 (bipolar centre)
+  synth_hidden_pot[4] = 0.5f;   // env->pitch  -> 0 (bipolar centre)
+}
+
+// Map a 2-bit curve selector to an envelope curve value.
+inline float SynthCurve(uint8_t sel) {
+  static const float kCurves[4] = { 0.5f, 0.25f, 0.75f, 0.15f };
+  return kCurves[sel & 0x3];
+}
+
+void ProcessSynth(IOBuffer::Block* block, size_t size) {
+  const uint16_t* config = settings.state().segment_configuration;
+
+  // Latch primary / hidden values depending on whether each button is held.
+  for (size_t i = 0; i < kNumChannels; ++i) {
+    if (ui.switches().pressed(i)) {
+      synth_hidden_pot[i] = block->pot[i];
+      synth_hidden_slider[i] = block->slider[i];
+    } else {
+      synth_primary_slider[i] = block->slider[i];
+      synth_primary_pot[i] = block->pot[i];
+    }
+  }
+
+  SynthPatch patch;
+
+  // ch0 OSC1 -------------------------------------------------------------
+  patch.base_pitch = block->cv[0] * 96.0f;  // calibrated V/oct (~1V/oct)
+  patch.osc1_coarse = (synth_primary_slider[0] - 0.5f) * 48.0f;  // +/- 2 oct
+  patch.osc1_fine = (synth_hidden_slider[0] - 0.5f) * 2.0f;      // +/- 1 semi
+  patch.osc1_shape = synth_primary_pot[0];
+  patch.osc1_wave = config[0] & 0x3;
+
+  // ch1 OSC2 -------------------------------------------------------------
+  patch.osc2_coarse = (synth_primary_slider[1] - 0.5f) * 48.0f;
+  patch.osc2_fine = (synth_hidden_slider[1] - 0.5f) * 2.0f;
+  patch.osc2_shape = synth_primary_pot[1];
+  patch.osc2_wave = config[1] & 0x3;
+  patch.mix = synth_hidden_pot[1];
+
+  // ch2 FILTER -----------------------------------------------------------
+  patch.filter_mode = config[2] & 0x3;
+  patch.cutoff = synth_primary_slider[2];
+  patch.resonance = synth_primary_pot[2];
+  patch.drive = synth_hidden_pot[2];
+  patch.key_track = synth_hidden_slider[2];
+  patch.cutoff_cv = block->input_patched[2] ? block->cv[2] : 0.0f;
+
+  // ch3 LFO --------------------------------------------------------------
+  patch.lfo_rate = synth_primary_slider[3];
+  patch.lfo_depth = synth_primary_pot[3];
+  patch.lfo_wave = config[3] & 0x3;
+  patch.lfo_dest = static_cast<int>(synth_hidden_pot[3] * 2.99f);
+  patch.lfo_fade = synth_hidden_slider[3];
+
+  // ch4 ADSR-2 (sustain / release / curves / env->pitch / loop) ----------
+  patch.sustain = synth_primary_slider[4];
+  patch.release = synth_primary_pot[4];
+  patch.decrel_curve = SynthCurve(config[4] & 0x3);
+  patch.env_to_pitch = (synth_hidden_pot[4] - 0.5f) * 2.0f;
+  patch.loop = synth_hidden_slider[4] > 0.5f;
+
+  // ch5 ADSR-1 (attack / decay / curve / env->filter / accent) -----------
+  patch.attack = synth_primary_slider[5];
+  patch.decay = synth_primary_pot[5];
+  patch.attack_curve = SynthCurve(config[5] & 0x3);
+  patch.env_to_filter = (synth_hidden_pot[5] - 0.5f) * 2.0f;
+  patch.accent = block->input_patched[5] ? block->cv[5] : 0.0f;
+  CONSTRAIN(patch.accent, 0.0f, 1.0f);
+
+  // Jacks: ch4 gate -> envelope, ch1 gate -> osc2 sync, ch1 CV -> osc2 FM.
+  const GateFlags* gate = block->input_patched[4] ? block->input[4] : no_gate;
+  const GateFlags* sync_gate = block->input_patched[1] ? block->input[1] : NULL;
+  const float* fm = NULL;
+  if (block->input_patched[1]) {
+    for (size_t i = 0; i < size; ++i) {
+      synth_fm[i] = block->cv[1];
+    }
+    fm = synth_fm;
+  }
+
+  SynthOutputs out;
+  out.osc1 = synth_out[0];
+  out.osc2 = synth_out[1];
+  out.filter = synth_out[2];
+  out.lfo = synth_out[3];
+  out.env = synth_out[4];
+  out.main = synth_out[5];
+
+  synth_voice.Render(patch, gate, sync_gate, fm, out, size);
+
+  // Slider LED animations.
+  bool env_active = synth_voice.env_value() > 0.01f;
+  ui.set_slider_led(0, env_active, 1);
+  ui.set_slider_led(1, env_active, 1);
+  ui.set_slider_led(2, env_active, 1);
+  ui.set_slider_led(3, fabsf(synth_voice.lfo_value()) > 0.02f, 1);
+  ui.set_slider_led(4, env_active, 1);
+  ui.set_slider_led(5, env_active, 1);
+
+  for (size_t channel = 0; channel < kNumChannels; ++channel) {
+    for (size_t i = 0; i < size; ++i) {
+      block->output[channel][i] =
+          settings.dac_code(channel, synth_out[channel][i]);
+    }
+  }
+}
+
 void ProcessTest(IOBuffer::Block* block, size_t size) {
 
   for (size_t channel = 0; channel < kNumChannels; channel++) {
@@ -403,6 +547,8 @@ void Init() {
     segment_generator[i].Init((MultiMode) settings.state().multimode, &note_quantizer[i]);
     oscillator[i].Init();
   }
+  synth_voice.Init();
+  InitSynthState();
   std::fill(&no_gate[0], &no_gate[kBlockSize], GATE_FLAG_LOW);
 
   cv_reader.Init(&settings, &chain_state);
@@ -439,6 +585,9 @@ int main(void) {
         case MULTI_MODE_OUROBOROS:
         case MULTI_MODE_OUROBOROS_ALTERNATE:
           io_buffer.Process(&ProcessOuroboros);
+          break;
+        case MULTI_MODE_SYNTH:
+          io_buffer.Process(&ProcessSynth);
           break;
         default:
           io_buffer.Process(&Process);

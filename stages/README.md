@@ -60,10 +60,12 @@ Control overview (modes in order of corresponding button; hold button for 5 seco
 | ---              | ---      | ---            | ---                | ---                | ---             | ---                |
 | Segment gen      | Seg type | Toggle looping | Time / level       | Shape / time       | LFO range (G)   | Polarity / re-trig |
 | Adv segment gen  | Seg type | Toggle looping | Time / level       | Shape / time       | LFO range (G)   | Polarity / re-trig |
-| Slow LFO         | Seg type | Toggle looping | Time / level       | Shape / time       | LFO range (G)   | Polarity / re-trig |
+| Mono synth       | Type †   | -              | Per section †      | Per section †      | Per section †   | Per section †      |
 | DAHDSR           | Gate     | -              | Time / level (5)   | Shape (246)        | -               | -                  |
 | Harmonic osc     | Shape    | Toggle shapes  | Freq (1) / amp     | Tune (1) / harmony | Freq range (1)  | -                  |
 | Alt harmonic osc | Shape    | Toggle shapes  | Freq (1) / harmony | Tune (1) / amp     | Freq range (1)  | -                  |
+
+† Mono synth controls differ per section; see [Mono synth](#mono-synth) for the full map.
 
 Single segment types in segment generator modes (* = advanced mode; all other behaviors are unchanged from original Stages):
 | Segment type          | Behavior           | Slider + CV       | Pot         | Button + slider | Button + pot        |
@@ -113,16 +115,15 @@ Hold one of the six buttons for 5 seconds to change mode. This setting is persis
 
 1. [Segment generator](#segment-generator)
 2. [Advanced Segment generator](#advanced-segment-generator)
-3. Segment generator with [slower free-running LFOs](#slower-free-running-lfos)
+3. [Mono synth voice](#mono-synth)
 4. [Six DAHDSR envelope generators](#six-dahdsr-envelope-generators)
 5. [Harmonic oscillator](#harmonic-oscillator), aka Ouroboros mode
 6. Harmonic oscillator with [alternate controls](#harmonic-oscillator-with-alternate-controls)
 
-For chained modules: adjacent, connected Stages will chain if both are in mode 1 (segment generator) or both are in mode 2 (adv. segment generator) or 3 (slow LFO).
-Modes 4, 5, and 6 will split a chain.
-So if you have connected modules in 1-1-2-3-6-2, 1-1 will be a chain, 2-3 will be a chain, and the last 2 will be isolated, like so: (1-1)-(2-3)-(6)-(2).
+For chained modules: adjacent, connected Stages will chain if both are in mode 1 (segment generator) or both are in mode 2 (adv. segment generator).
+Modes 3, 4, 5, and 6 are self-contained instruments and will split a chain.
+So if you have connected modules in 1-1-2-2-6-2, 1-1 will be a chain, 2-2 will be a chain, and the last 2 will be isolated, like so: (1-1)-(2-2)-(6)-(2).
 Changing a module's mode will automatically update the chain configuration (the LEDs will flash like on startup).
-So, in the above example, if the module in mode 6 is changed to mode 2, the chaining configuration will become (1-1)-(2-3-2-2).
 Modules with the original Stages firmware are ignored.
 
 ### Segment generator
@@ -263,15 +264,57 @@ The pot on single, gated, looping hold segments now controls their probability o
 Previously, the pot did not do anything.
 Fully CW will cause it to always fire (the original behavior) and fully CCW will cause it to never fire.
 
-### Slower free-running LFOs
+### Mono synth
 
-In this mode, Stages behaves exactly like the standard segment generator mode, except free-running LFOs (i.e. single green looping segments) are [eight time slower][5].
-This mode contains all the new features of [segment generator mode](#segment-generator).
-This fork applies this 8x slowdown to each of the LFO ranges, so while the default is the same as in joeSeggiola's original, much slower LFOs may be achieved (16 minutes), while also mixing with faster LFOs.
+This mode turns Stages into a self-contained **monophonic synth voice**. The six
+sections become functional blocks of one voice, laid out left → right like a
+synth block diagram; the finished voice exits the **rightmost** jack (ch5):
 
-Note: Since LFO range configuration has been integrated in as a segment property, this mode may be removed to make space for other things.
+```
+ ch0     ch1      ch2       ch3      ch4      ch5
+ OSC1    OSC2     FILTER    LFO      ADSR-2   ADSR-1 → MAIN OUT
+```
 
-[5]: https://forum.mutable-instruments.net/t/stages/13643/54
+Every section follows the **same control grammar**:
+
+- **Slider** = primary control A, **Pot** = primary control B (always live).
+- **Tap the button** (short press, don't move slider/pot) to cycle the section's
+  *type* — the **button LED colour** shows which one: **green = 0, orange = 1,
+  red = 2, off = 3** (the LED blinks dark briefly to confirm a change).
+- **Hold the button + move the Pot** for the hidden "shift" parameter B′.
+- **Hold the button + move the Slider** for the hidden "shift" parameter A′.
+- **Slider LED** shows live signal activity (envelope / LFO).
+
+Holding a button and moving its slider/pot suppresses the 5 s mode-switch, so you
+can dial in hidden parameters freely.
+
+Full control map:
+
+| Section (jack)  | Slider (A) | Pot (B) | Tap button — type (LED green/orange/red/off) | Hold + Slider (A′) | Hold + Pot (B′) | Input jack | Output jack |
+| ---             | ---        | ---     | ---                                          | ---                | ---             | ---        | ---         |
+| **ch0 OSC1**    | Coarse tune (±2 oct) | Shape (PWM) | Wave: Saw / Square / Triangle / Sine | Fine tune (±1 semi) | *(reserved)* | **1V/oct** pitch | OSC1 raw |
+| **ch1 OSC2**    | Coarse / interval | Shape (PWM) | Wave: Saw / Square / Triangle / Sine | Fine tune (±1 semi) | Mix OSC1↔OSC2 | Gate→hard-sync, CV→FM | OSC2 raw |
+| **ch2 FILTER**  | Cutoff | Resonance | Mode: LP / BP / HP / Ladder | Key-track amount | Drive | Cutoff CV (+) | Filter out (pre-VCA) |
+| **ch3 LFO**     | Rate (~0.05–36 Hz) | Depth | Wave: Triangle / Saw / Square / S&H | Fade-in time | Destination: Pitch / PWM / Cutoff | *(unused)* | LFO out |
+| **ch4 ADSR-2**  | Sustain | Release | Decay/Release curve: linear / exp / log / sharp | Loop env (up = on) | Env→Pitch (bipolar, centre = 0) | **Gate / trigger** | Envelope CV |
+| **ch5 ADSR-1**  | Attack | Decay | Attack curve: linear / exp / log / sharp | *(none)* | Env→Filter (bipolar, centre = 0) | Accent / velocity | **MAIN voice out** |
+
+The single ADSR (attack = ch5 slider, decay = ch5 pot, sustain = ch4 slider,
+release = ch4 pot) drives **both** the VCA and the Env→Filter / Env→Pitch
+routings. Bipolar hidden pots (Env→Pitch, Env→Filter) are off at 12 o'clock.
+
+**Make a sound:** enter the mode (hold ch2's button 5 s), patch a gate into ch4
+and take audio from ch5, then play 1V/oct on ch0. No gate handy? Hold ch4's
+button and push its slider up to **loop** the envelope so it free-runs.
+
+**Persistence:** only the tap-cycled *types* (waveforms, filter mode, LFO wave,
+curves) are saved to flash. The hidden hold+pot / hold+slider values (mix, fine
+tune, drive, key-track, LFO dest/fade, env amounts, loop) are live and reset to
+defaults on power-up — by design, like all Stages knobs.
+
+> Implements phases 1–5 of `stages/docs/synth_plan.md`; see
+> `stages/docs/synth_controls.md` for the long-form reference. Phase 6 polish
+> (true V/oct calibration, glide, richer LED animations) is still open.
 
 
 ### Six DAHDSR envelope generators

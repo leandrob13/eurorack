@@ -112,6 +112,12 @@ class Ui {
   int press_time_multimode_toggle_[kNumSwitches];
   uint8_t tracking_multimode_;
 
+  // Synth-mode tap detection: a short press that does not move the slider/pot
+  // cycles the section's discrete type; movement marks a hidden-param gesture.
+  uint8_t synth_adjusted_;
+  float synth_slider_at_press_[kNumChannels];
+  float synth_pot_at_press_[kNumChannels];
+
   uint32_t discrete_change_time_[kNumChannels];
 
   Settings* settings_;

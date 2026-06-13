@@ -51,6 +51,7 @@ enum TGeneratorModel {
   T_GENERATOR_MODEL_GRIDS,
   
   T_GENERATOR_MODEL_MARKOV,
+  T_GENERATOR_MODEL_TOGGLE,
 };
 
 enum TGeneratorRange {
@@ -190,6 +191,7 @@ class TGenerator {
   int GenerateThreeStates(const RandomVector& v);
   int GenerateDrums(const RandomVector& v);
   int GenerateMarkov(const RandomVector& v);
+  int GenerateToggle();
   int GenerateGrids(const RandomVector& v);
   void ScheduleOutputPulses(const RandomVector& v, int bitmask);
 
@@ -239,6 +241,7 @@ class TGenerator {
   int32_t streak_counter_[kMarkovHistorySize];
   int32_t markov_history_[kMarkovHistorySize];
   int32_t markov_history_ptr_;
+  uint8_t toggle_counter_;
   size_t drum_pattern_step_;
   size_t drum_pattern_index_;
 

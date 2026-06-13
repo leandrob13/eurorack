@@ -765,10 +765,6 @@ void SegmentGenerator::ProcessFreeRunningRandomLFO(
       break;
   }
 
-  if (multimode_ == MULTI_MODE_STAGES_SLOW_LFO) {
-    frequency /= 8.0f;
-  }
-
   if (frequency > 0.25f) {
     phase_ = 0.0f;
     float std_dev = 2.0f * (1.0f - parameters_[0].secondary);

@@ -46,7 +46,7 @@ namespace stages {
 const MultiMode Ui::multimodes_[6] = {
   MULTI_MODE_STAGES, // Mode enabled by long pressing the left-most button
   MULTI_MODE_STAGES_ADVANCED,
-  MULTI_MODE_STAGES_SLOW_LFO,
+  MULTI_MODE_SYNTH,
   MULTI_MODE_SIX_EG,
   MULTI_MODE_OUROBOROS,
   MULTI_MODE_OUROBOROS_ALTERNATE, // Mode enabled by long pressing the right-most button
@@ -84,6 +84,10 @@ void Ui::Init(Settings* settings, ChainState* chain_state, CvReader* cv_reader) 
   }
 
   fill(&slider_led_counter_[0], &slider_led_counter_[kNumLEDs], 0);
+
+  synth_adjusted_ = 0;
+  fill(&synth_slider_at_press_[0], &synth_slider_at_press_[kNumChannels], 0.0f);
+  fill(&synth_pot_at_press_[0], &synth_pot_at_press_[kNumChannels], 0.0f);
 }
 
 void Ui::Poll() {
@@ -109,8 +113,9 @@ void Ui::Poll() {
   // TODO: This is gross. Each mode should have its own UI handler, with a
   // generic system for changing segment properties that each can leverage.
   bool changing_prop = false;
-  if (pressed || changing_pot_prop_ || changing_slider_prop_ ||
-      cv_reader_->any_locked()) {
+  if (!settings_->in_synth_mode() &&
+      (pressed || changing_pot_prop_ || changing_slider_prop_ ||
+      cv_reader_->any_locked())) {
     uint16_t* seg_config = settings_->mutable_state()->segment_configuration;
     for (uint8_t i = 0; i < kNumChannels; ++i) {
       if (switches_.pressed(i)) {
@@ -187,7 +192,6 @@ void Ui::Poll() {
           switch (multimode) {
             case MULTI_MODE_STAGES:
             case MULTI_MODE_STAGES_ADVANCED:
-            case MULTI_MODE_STAGES_SLOW_LFO:
               // toggle polarity
               seg_config[i] ^= 0b00001000;
               break;
@@ -261,6 +265,43 @@ void Ui::Poll() {
     }
   }
 
+
+  if (settings_->in_synth_mode()) {
+    State* s = settings_->mutable_state();
+    for (int i = 0; i < kNumSwitches; ++i) {
+      if (switches_.pressed(i)) {
+        if (press_time_[i] == 0) {
+          // Rising edge: remember slider/pot so we can tell a tap from a
+          // hidden-parameter (hold + move) gesture.
+          synth_slider_at_press_[i] = cv_reader_->lp_slider(i);
+          synth_pot_at_press_[i] = cv_reader_->lp_pot(i);
+          synth_adjusted_ &= ~(1 << i);
+        }
+        if (press_time_[i] != -1) {
+          ++press_time_[i];
+        }
+        if (fabsf(cv_reader_->lp_slider(i) - synth_slider_at_press_[i]) > 0.04f
+            || fabsf(cv_reader_->lp_pot(i) - synth_pot_at_press_[i]) > 0.04f) {
+          synth_adjusted_ |= 1 << i;
+        }
+      } else {
+        if (press_time_[i] > 0
+            && press_time_[i] < kLongPressDurationForMultiModeToggle
+            && !(synth_adjusted_ & (1 << i))) {
+          // Tap: cycle this section's discrete type (low 2 bits).
+          uint16_t cfg = s->segment_configuration[i];
+          s->segment_configuration[i] = (cfg & ~0x3) | ((cfg + 1) & 0x3);
+          settings_->SaveState();
+          set_discrete_change(i);
+        }
+        press_time_[i] = 0;
+      }
+    }
+    // Don't let a hidden-parameter gesture trip the 5 s mode toggle.
+    if (synth_adjusted_) {
+      changing_prop = true;
+    }
+  }
 
   // Detect very long presses for multi-mode toggle (using a negative counter)
   if (tracking_multimode_ || pressed) {
@@ -441,6 +482,23 @@ void Ui::UpdateLEDs() {
       for (size_t i = 0; i < kNumChannels; ++i) {
         leds_.set(LED_GROUP_UI + i, led_color_[i]);
         leds_.set(LED_GROUP_SLIDER + i, slider_led_counter_[i] ? LED_COLOR_GREEN : LED_COLOR_OFF);
+      }
+
+    } else if (multimode == MULTI_MODE_SYNTH) {
+
+      // Button LED shows the section's discrete type (off/green/orange/red);
+      // slider LED shows the live signal animation set by the voice renderer.
+      for (size_t i = 0; i < kNumChannels; ++i) {
+        uint8_t type = settings_->state().segment_configuration[i] & 0x3;
+        LedColor color = palette_[type];
+        uint32_t dur = ms - discrete_change_time_[i];
+        if (dur <= kDiscreteStateBlinkDur + kDiscreteStatePreBlinkDur
+            && dur > kDiscreteStatePreBlinkDur) {
+          color = LED_COLOR_OFF;  // brief blink to acknowledge a change
+        }
+        leds_.set(LED_GROUP_UI + i, color);
+        leds_.set(LED_GROUP_SLIDER + i,
+            slider_led_counter_[i] ? LED_COLOR_GREEN : LED_COLOR_OFF);
       }
 
     } else {

@@ -134,9 +134,12 @@ void Ui::Poll() {
 LedColor Ui::MakeColor(uint8_t value, bool color_blind) {
   bool slow_blink = (system_clock.milliseconds() & 255) > 128;
 
-  uint8_t bank = value >= 3 ? 1 : 0;
-  value -= bank * 3;
-  
+  if (value >= 6) {
+    return LED_COLOR_OFF;
+  }
+  uint8_t bank = value / 3;
+  value %= 3;
+
   LedColor color = palette_[value];
   if (color_blind) {
     uint8_t pwm_counter = system_clock.milliseconds() & 15;
@@ -205,7 +208,13 @@ void Ui::UpdateLEDs() {
     case UI_MODE_NORMAL:
     case UI_MODE_RECORD_SCALE:
       {
-        leds_.set(LED_T_MODEL, MakeColor(state.t_model, cb));
+        if (state.t_model == T_GENERATOR_MODEL_MARKOV) {
+          leds_.set(LED_T_MODEL, LED_COLOR_OFF);
+        } else if (state.t_model == T_GENERATOR_MODEL_TOGGLE) {
+          leds_.set(LED_T_MODEL, fast_blink ? LED_COLOR_GREEN : LED_COLOR_OFF);
+        } else {
+          leds_.set(LED_T_MODEL, MakeColor(state.t_model, cb));
+        }
         leds_.set(LED_T_RANGE, MakeColor(state.t_range, cb));
         leds_.set(
             LED_T_DEJA_VU,
@@ -353,16 +362,24 @@ void Ui::OnSwitchReleased(const Event& e) {
       {
         uint8_t bank = state->t_model / 3;
         if (e.data >= kLongPressDuration) {
-          if (!bank) {
+          if (state->t_model == T_GENERATOR_MODEL_MARKOV) {
+            state->t_model = T_GENERATOR_MODEL_TOGGLE;
+          } else if (state->t_model == T_GENERATOR_MODEL_TOGGLE) {
+            state->t_model = T_GENERATOR_MODEL_MARKOV;
+          } else if (!bank) {
             state->t_model += 3;
           } else {
             state->t_model -= 3;
           }
         } else {
-          if (bank) {
+          if (state->t_model >= T_GENERATOR_MODEL_MARKOV) {
+            state->t_model = 0;
+          } else if (bank) {
             state->t_model -= 3;
+          } else if (state->t_model == T_GENERATOR_MODEL_DRUMS) {
+            state->t_model = T_GENERATOR_MODEL_MARKOV;
           } else {
-            state->t_model = (state->t_model + 1) % 3;
+            state->t_model++;
           }
         }
         SaveState();

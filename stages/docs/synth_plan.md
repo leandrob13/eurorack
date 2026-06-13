@@ -5,7 +5,23 @@ The six sections become functional blocks of one voice, laid out left→right li
 synth block diagram. Oscillators on the left; the finished voice exits the
 rightmost jack.
 
-Status: **design / planning**. Nothing implemented yet.
+Status: **implemented (phases 1–5)**. The voice ships in `synth_voice.{h,cc}`,
+wired through `ProcessSynth` in `stages.cc` and the synth UI/LED path in
+`ui.cc`. Phase 6 polish (V/oct calibration, richer LED/slider animations,
+glide) is still open. Firmware builds clean with the in-tree ARM toolchain.
+
+Decisions taken during implementation (where the plan left choices open):
+- **Hidden "shift" params are RAM-latched, not flashed.** Only the tap-cycled
+  discrete type (low 2 bits of `segment_configuration[ch]`) persists. Hold+pot /
+  hold+slider values live in RAM (`synth_hidden_*` in `stages.cc`) and reset to
+  defaults on power-up. Keeps all flash writes in the UI thread (§7 intent).
+- **LFO destination is single-select** (ch3 hold+pot picks pitch/PWM/cutoff).
+- **ch0 hold+pot (sub/level) is reserved but inert in v1**; ch0/ch1 hold+slider
+  are osc fine-tune (±1 semitone). Glide deferred.
+- **Hard sync = gate-edge phase reset** of osc2 (osc has no per-sample sync),
+  and **FM is block-rate** (CV sampled once per block by the hardware).
+- **V/oct uses the Ouroboros ×96 scaling** on `block.cv[0]`; true calibration is
+  phase-6 work.
 
 ---
 
