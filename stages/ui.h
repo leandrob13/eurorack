@@ -82,6 +82,12 @@ class Ui {
 
   inline const Switches& switches() const { return switches_; }
 
+  // True once a held button's slider/pot has moved enough to count as a
+  // hidden-parameter (hold + move) gesture, as opposed to a plain tap.
+  inline bool synth_adjusted(int i) const {
+    return (synth_adjusted_ & (1 << i)) != 0;
+  }
+
  private:
   void OnSwitchPressed(const stmlib::Event& e);
   void OnSwitchReleased(const stmlib::Event& e);

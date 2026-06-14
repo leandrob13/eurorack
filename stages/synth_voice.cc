@@ -18,6 +18,8 @@
 
 #include "stages/synth_voice.h"
 
+#include "stages/bipolar_fold_lut.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -33,11 +35,15 @@ using namespace stmlib;
 namespace {
 
 const float kSr = 31250.0f;
-const float kNyquist = kSr * 0.5f;
 // One Process() call always covers a full kBlockSize block (8 samples), so the
 // control rate (used for the envelope and LFO) is fixed.
 const float kBlockRate = kSr / float(kBlockSize);
-const float kMiddleC = 261.6255f;
+// Base oscillator frequency with no CV patched and the coarse slider centred:
+// C3 (one octave below middle C) for a deeper default voice.
+const float kBaseFreq = 130.81278f;
+// Linear-FM index for the ch1 CV -> osc2 path. Calibrated cv is ~0.0625 per
+// volt, so this makes ~+4V roughly double osc2's frequency (+1 octave).
+const float kFmDepth = 4.0f;
 
 // Standard cubic soft clipper: x - x^3/3, output bounded to +/- 2/3.
 inline float SoftClip(float x) {
@@ -50,6 +56,36 @@ inline float SoftClip(float x) {
 inline float CutoffToHz(float cutoff) {
   CONSTRAIN(cutoff, 0.0f, 1.0f);
   return 20.0f * SemitonesToRatio(cutoff * 9.0f * 12.0f);
+}
+
+// Triangle wavefolder using Warps' smooth fold table (kBipolarFoldLut, lifted
+// from warps/resources.cc). Warps' fold curve already folds at its centre, so
+// a bare "drive = amount" never yields a clean triangle; instead we both push
+// further into the table as the amount rises (4 -> 10 folds) and crossfade from
+// the dry triangle to the folded signal, so the pot sweeps clean -> heavily
+// folded. Indexed bipolarly via `+ 2048`, exactly like Warps' ALGORITHM_FOLD;
+// the 2000 scale keeps the window inside the 4097-entry table with margin.
+inline void ApplyFold(float* buf, float amount, size_t size) {
+  if (amount < 0.001f) {
+    return;  // clean triangle
+  }
+  // Warps fold (output * -0.8, the exact curve from warps/dsp/modulator.cc).
+  // The table already folds at its centre, so jumping straight from a clean
+  // triangle to the fold output is an audible step. To avoid that we crossfade
+  // the dry triangle into the folded signal across the bottom of the pot only
+  // (gone by ~25%); above that it is the pure Warps fold. The fold drive
+  // (0.02 -> 1.02) still scales over the whole range -- at the top x*1.02*2000
+  // reaches the table edge for the full fold.
+  const float drive = 0.02f + amount;
+  float dry = 1.0f - amount * 4.0f;  // dry path gone by amount = 0.25
+  if (dry < 0.0f) dry = 0.0f;
+  for (size_t i = 0; i < size; ++i) {
+    float x = buf[i];
+    CONSTRAIN(x, -1.0f, 1.0f);
+    const float folded =
+        Interpolate(kBipolarFoldLut + 2048, x * drive, 2000.0f) * -0.8f;
+    buf[i] = x * dry + folded * (1.0f - dry);
+  }
 }
 
 inline float RenderOscWave(
@@ -79,16 +115,18 @@ inline float RenderOscWave(
 void SynthVoice::Init() {
   osc1_.Init();
   osc2_.Init();
+  osc1_saw_[0].Init();
+  osc1_saw_[1].Init();
+  osc1_sub_.Init();
   eg_.Init();
-  svf_.Init();
-
-  std::fill(&ladder_stage_[0], &ladder_stage_[4], 0.0f);
-  std::fill(&ladder_delay_[0], &ladder_delay_[4], 0.0f);
+  svf_[0].Init();
+  svf_[1].Init();
 
   lfo_phase_ = 0.0f;
   lfo_value_ = 0.0f;
   lfo_sh_value_ = 0.0f;
   lfo_fade_level_ = 0.0f;
+  noise_lp_ = 0.0f;
 
   env_value_ = 0.0f;
   previous_env_ = 0.0f;
@@ -133,67 +171,108 @@ float SynthVoice::RenderLfo(const SynthPatch& patch) {
   return lfo_value_;
 }
 
+void SynthVoice::RenderSuperSaw(
+    float frequency, float detune, float* out, size_t size) {
+  // Centre saw, always at full level.
+  osc1_.Render<OSCILLATOR_SHAPE_SAW>(frequency, 0.5f, out, size);
+
+  // The two detuned satellites fade in *with* the detune amount. The cores have
+  // independent (and unsynchronised) phase, so at detune 0 three same-frequency
+  // saws would comb-filter into a hollow tone rather than a clean saw; fading
+  // the satellites to silence there guarantees a clean single saw at shape 0.
+  if (detune < 0.001f) {
+    return;
+  }
+  // Satellite *level* ramps up quickly over the first part of the pot (so only
+  // the very bottom stays a clean single saw, free of same-frequency combing),
+  // then holds. The detune *width* keeps widening across the whole range, so
+  // the effect gets more pronounced the further the pot is turned.
+  float blend = detune * 6.667f;  // reaches full level by detune ~0.15
+  if (blend > 1.0f) blend = 1.0f;
+  const float d = detune * 0.06f;            // up to ~+/-0.06 ratio (~1 semi/side)
+  const float s_gain = 0.45f * blend;        // satellites
+  const float c_gain = 1.0f - 0.3f * blend;  // centre eases back a touch
+
+  osc1_saw_[0].Render<OSCILLATOR_SHAPE_SAW>(
+      frequency * (1.0f + d), 0.5f, super_buffer_, size);
+  for (size_t i = 0; i < size; ++i) {
+    out[i] = out[i] * c_gain + super_buffer_[i] * s_gain;
+  }
+  osc1_saw_[1].Render<OSCILLATOR_SHAPE_SAW>(
+      frequency * (1.0f - d), 0.5f, super_buffer_, size);
+  for (size_t i = 0; i < size; ++i) {
+    out[i] += super_buffer_[i] * s_gain;
+  }
+}
+
+void SynthVoice::RenderNoise(float tone, float* out, size_t size) {
+  // White noise through a one-pole low-pass whose cutoff tracks the tone pot
+  // (dark rumble -> near-white). Compensate the level the low-pass removes so
+  // the perceived loudness stays roughly constant across the pot.
+  const float coeff = 0.02f + tone * tone * 0.95f;
+  const float comp = 1.0f + (1.0f - tone) * 2.0f;
+  for (size_t i = 0; i < size; ++i) {
+    const float white = 2.0f * Random::GetFloat() - 1.0f;
+    noise_lp_ += coeff * (white - noise_lp_);
+    out[i] = noise_lp_ * comp;
+  }
+}
+
 void SynthVoice::RenderFilter(
     const SynthPatch& patch, float cutoff_mod, const float* in, float* out,
     size_t size) {
   float cutoff = patch.cutoff + cutoff_mod;
   float fc = CutoffToHz(cutoff);
+  float fc_norm = fc / kSr;
+  CONSTRAIN(fc_norm, 0.0005f, 0.24f);
 
-  if (patch.filter_mode == SYNTH_FILTER_LADDER) {
-    // Stilson/Smith 4-pole ladder (Paul Kellett's variation), with drive in
-    // the feedback path for a saturating resonance.
-    float f = fc / kNyquist * 1.16f;
-    CONSTRAIN(f, 0.0f, 0.99f);
-    float fb = patch.resonance * 4.0f * (1.0f - 0.15f * f * f);
-    float drive_gain = 1.0f + patch.drive * 3.0f;
-    float in_gain = 0.35013f * (f * f) * (f * f);
-
-    for (size_t i = 0; i < size; ++i) {
-      float x = in[i] * drive_gain;
-      x = SoftClip(x) * 1.5f;
-      x -= ladder_stage_[3] * fb;
-      x *= in_gain;
-      ladder_stage_[0] = x + 0.3f * ladder_delay_[0] +
-          (1.0f - f) * ladder_stage_[0];
-      ladder_delay_[0] = x;
-      ladder_stage_[1] = ladder_stage_[0] + 0.3f * ladder_delay_[1] +
-          (1.0f - f) * ladder_stage_[1];
-      ladder_delay_[1] = ladder_stage_[0];
-      ladder_stage_[2] = ladder_stage_[1] + 0.3f * ladder_delay_[2] +
-          (1.0f - f) * ladder_stage_[2];
-      ladder_delay_[2] = ladder_stage_[1];
-      ladder_stage_[3] = ladder_stage_[2] + 0.3f * ladder_delay_[3] +
-          (1.0f - f) * ladder_stage_[3];
-      ladder_delay_[3] = ladder_stage_[2];
-      out[i] = ladder_stage_[3] * 4.0f;
+  // Band-pass / high-pass: a single 2-pole SVF stage with optional post-drive,
+  // as before.
+  if (patch.filter_mode == SYNTH_FILTER_BP ||
+      patch.filter_mode == SYNTH_FILTER_HP) {
+    float q = 0.7f + patch.resonance * patch.resonance * 17.0f;
+    svf_[0].set_f_q<FREQUENCY_DIRTY>(fc_norm, q);
+    if (patch.filter_mode == SYNTH_FILTER_BP) {
+      svf_[0].Process<FILTER_MODE_BAND_PASS>(in, out, size);
+    } else {
+      svf_[0].Process<FILTER_MODE_HIGH_PASS>(in, out, size);
+    }
+    if (patch.drive > 0.001f) {
+      float drive_gain = 1.0f + patch.drive * 3.0f;
+      for (size_t i = 0; i < size; ++i) {
+        out[i] = SoftClip(out[i] * drive_gain) * 1.5f;
+      }
     }
     return;
   }
 
-  // State-variable filter modes. Resonance maps to Q ~0.7 .. ~18.
-  float fc_norm = fc / kSr;
-  CONSTRAIN(fc_norm, 0.0005f, 0.24f);
-  float q = 0.7f + patch.resonance * patch.resonance * 17.0f;
-  svf_.set_f_q<FREQUENCY_DIRTY>(fc_norm, q);
+  // Low-pass: virtual-analog cascade calibrated like Plaits' VA-with-VCF engine
+  // (plaits/dsp/engine2/virtual_analog_vcf_engine.cc). Two 2-pole SVF stages
+  // with soft clipping in the signal path give a saturating, MS-20-ish
+  // resonance. The resonance follows a quartic taper (gentle until the top),
+  // and the second stage's Q is heavily damped so it only adds slope, not peak.
+  //   green / LP_AGGRESSIVE : full 4-pole, high Q, hot drive  -> screams.
+  //   off   / LP_GENTLE     : single 2-pole, tame Q, clean    -> smooth.
+  const bool aggressive = patch.filter_mode == SYNTH_FILTER_LP_AGGRESSIVE;
 
-  switch (patch.filter_mode) {
-    case SYNTH_FILTER_BP:
-      svf_.Process<FILTER_MODE_BAND_PASS>(in, out, size);
-      break;
-    case SYNTH_FILTER_HP:
-      svf_.Process<FILTER_MODE_HIGH_PASS>(in, out, size);
-      break;
-    case SYNTH_FILTER_LP:
-    default:
-      svf_.Process<FILTER_MODE_LOW_PASS>(in, out, size);
-      break;
-  }
+  const float res = patch.resonance;
+  const float res_sqr = res * res;
+  const float q = res_sqr * res_sqr * (aggressive ? 48.0f : 14.0f);
+  // Input drive into the soft clipper; aggressive mode runs hotter so the
+  // resonance saturates. The drive pot pushes both modes further.
+  const float gain = (aggressive ? 1.0f : 0.8f) + patch.drive * 2.0f;
 
-  if (patch.drive > 0.001f) {
-    float drive_gain = 1.0f + patch.drive * 3.0f;
-    for (size_t i = 0; i < size; ++i) {
-      out[i] = SoftClip(out[i] * drive_gain) * 1.5f;
+  svf_[0].set_f_q<FREQUENCY_DIRTY>(fc_norm, 0.5f + q);
+  svf_[1].set_f_q<FREQUENCY_DIRTY>(fc_norm, 0.5f + 0.025f * q);
+
+  for (size_t i = 0; i < size; ++i) {
+    float lp = svf_[0].Process<FILTER_MODE_LOW_PASS>(SoftClip(in[i] * gain));
+    lp = SoftClip(lp * gain);
+    if (aggressive) {
+      // Blend in the second pole pair -> saturating 4-pole.
+      lp = SoftClip(svf_[1].Process<FILTER_MODE_LOW_PASS>(lp));
     }
+    out[i] = lp * 1.4f;
   }
 }
 
@@ -241,26 +320,46 @@ void SynthVoice::Render(
   float lfo_cutoff = patch.lfo_dest == SYNTH_LFO_DEST_CUTOFF ? lfo * 0.5f : 0.0f;
 
   // --- Pitch -------------------------------------------------------------
-  float env_pitch = patch.env_to_pitch * env_value_ * 24.0f;
   float osc1_semi =
-      patch.base_pitch + patch.osc1_coarse + patch.osc1_fine +
-      env_pitch + lfo_pitch;
+      patch.base_pitch + patch.osc1_coarse + patch.osc1_fine + lfo_pitch;
   float osc2_semi =
-      patch.base_pitch + patch.osc2_coarse + patch.osc2_fine +
-      env_pitch + lfo_pitch;
+      patch.base_pitch + patch.osc2_coarse + patch.osc2_fine + lfo_pitch;
 
-  float f1 = kMiddleC * SemitonesToRatio(osc1_semi) / kSr;
-  float f2 = kMiddleC * SemitonesToRatio(osc2_semi) / kSr;
+  float f1 = kBaseFreq * SemitonesToRatio(osc1_semi) / kSr;
+  float f2 = kBaseFreq * SemitonesToRatio(osc2_semi) / kSr;
   CONSTRAIN(f1, kMinFrequency, kMaxFrequency);
   CONSTRAIN(f2, kMinFrequency, kMaxFrequency);
 
   // --- Oscillators -------------------------------------------------------
-  float shape1 = patch.osc1_shape + lfo_pwm;
-  float shape2 = patch.osc2_shape + lfo_pwm;
+  // ch0 hold+pot routes the envelope to the oscillator shapes (saw detune /
+  // square PWM / triangle fold) with this depth; 0 = off. Applied to both
+  // oscillators, like the LFO's shape (PWM) destination.
+  float shape_env = patch.env_to_shape * env_value_;
+  float shape1 = patch.osc1_shape + lfo_pwm + shape_env;
+  float shape2 = patch.osc2_shape + lfo_pwm + shape_env;
   CONSTRAIN(shape1, 0.0f, 1.0f);
   CONSTRAIN(shape2, 0.0f, 1.0f);
 
-  RenderOscWave(&osc1_, patch.osc1_wave, f1, shape1, osc1_buffer_, size);
+  // osc1: super-saw on the saw slot, wavefolder on the triangle slot, plain
+  // band-limited shape otherwise. (osc1 has no FM / sync input.)
+  if (patch.osc1_wave == SYNTH_OSC_WAVE_SAW) {
+    RenderSuperSaw(f1, shape1, osc1_buffer_, size);
+  } else if (patch.osc1_wave == SYNTH_OSC_WAVE_TRIANGLE) {
+    osc1_.Render<OSCILLATOR_SHAPE_TRIANGLE>(f1, 0.5f, osc1_buffer_, size);
+    ApplyFold(osc1_buffer_, shape1, size);
+  } else {
+    RenderOscWave(&osc1_, patch.osc1_wave, f1, shape1, osc1_buffer_, size);
+  }
+
+  // Optional sub-oscillator: a square one octave below osc1, summed into the
+  // osc1 signal (so it follows osc1 through the mixer / filter / VCA).
+  if (patch.sub_osc) {
+    osc1_sub_.Render<OSCILLATOR_SHAPE_SQUARE>(
+        f1 * 0.5f, 0.5f, super_buffer_, size);
+    for (size_t i = 0; i < size; ++i) {
+      osc1_buffer_[i] += super_buffer_[i] * 0.5f;
+    }
+  }
 
   // Hard sync: reset osc2 phase on a rising edge of the ch1 gate.
   if (sync_gate) {
@@ -269,33 +368,41 @@ void SynthVoice::Render(
       rising = rising || (sync_gate[i] & GATE_FLAG_RISING);
     }
     if (rising) {
-      osc2_.Init();
+      osc2_.SyncReset();
     }
   }
 
-  if (fm) {
-    // Linear through-zero FM into osc2 (ch1 CV).
-    for (size_t i = 0; i < size; ++i) {
-      fm_buffer_[i] = fm[i];
-    }
-    float pw2 = 0.05f + 0.9f * shape2;
-    switch (patch.osc2_wave) {
-      case SYNTH_OSC_WAVE_SQUARE:
-        osc2_.Render<OSCILLATOR_SHAPE_SQUARE>(f2, pw2, fm_buffer_, osc2_buffer_, size);
-        break;
-      case SYNTH_OSC_WAVE_TRIANGLE:
-        osc2_.Render<OSCILLATOR_SHAPE_TRIANGLE>(f2, 0.5f, fm_buffer_, osc2_buffer_, size);
-        break;
-      case SYNTH_OSC_WAVE_SINE:
-        osc2_.Render<OSCILLATOR_SHAPE_SINE>(f2, 0.5f, fm_buffer_, osc2_buffer_, size);
-        break;
-      case SYNTH_OSC_WAVE_SAW:
-      default:
-        osc2_.Render<OSCILLATOR_SHAPE_SAW>(f2, 0.5f, fm_buffer_, osc2_buffer_, size);
-        break;
-    }
+  // osc2: the "off" slot is noise (shape = tone); the saw slot stays a single
+  // saw; the triangle slot gets the wavefolder. Linear FM (ch1 CV) applies to
+  // the pitched waves only.
+  if (patch.osc2_wave == SYNTH_OSC_WAVE_SINE) {
+    RenderNoise(shape2, osc2_buffer_, size);
   } else {
-    RenderOscWave(&osc2_, patch.osc2_wave, f2, shape2, osc2_buffer_, size);
+    if (fm) {
+      // Linear through-zero FM into osc2 (ch1 CV). The CV is sampled once per
+      // block, so this is a (fast) pitch modulation rather than audio-rate FM.
+      for (size_t i = 0; i < size; ++i) {
+        fm_buffer_[i] = fm[i] * kFmDepth;
+      }
+      float pw2 = 0.05f + 0.9f * shape2;
+      switch (patch.osc2_wave) {
+        case SYNTH_OSC_WAVE_SQUARE:
+          osc2_.Render<OSCILLATOR_SHAPE_SQUARE>(f2, pw2, fm_buffer_, osc2_buffer_, size);
+          break;
+        case SYNTH_OSC_WAVE_TRIANGLE:
+          osc2_.Render<OSCILLATOR_SHAPE_TRIANGLE>(f2, 0.5f, fm_buffer_, osc2_buffer_, size);
+          break;
+        case SYNTH_OSC_WAVE_SAW:
+        default:
+          osc2_.Render<OSCILLATOR_SHAPE_SAW>(f2, 0.5f, fm_buffer_, osc2_buffer_, size);
+          break;
+      }
+    } else {
+      RenderOscWave(&osc2_, patch.osc2_wave, f2, shape2, osc2_buffer_, size);
+    }
+    if (patch.osc2_wave == SYNTH_OSC_WAVE_TRIANGLE) {
+      ApplyFold(osc2_buffer_, shape2, size);
+    }
   }
 
   // --- Mixer -------------------------------------------------------------
@@ -312,12 +419,14 @@ void SynthVoice::Render(
       patch.cutoff_cv +
       patch.env_to_filter * env_value_ +
       patch.key_track * key +
-      lfo_cutoff +
-      patch.accent * 0.2f;
+      lfo_cutoff;
   RenderFilter(patch, cutoff_mod, mix_buffer_, mix_buffer_, size);
 
   // --- VCA + outputs -----------------------------------------------------
-  float amp_target = env_value_ * (0.6f + 0.4f * patch.accent);
+  // The ch5 CV (accent/level) is added to the envelope so a steady CV can hold
+  // the VCA open without a gate (droning).
+  float amp_target = env_value_ + patch.accent;
+  CONSTRAIN(amp_target, 0.0f, 1.0f);
   ParameterInterpolator amp(&previous_amp_, amp_target, size);
   ParameterInterpolator env_cv(&previous_env_, env_value_, size);
 

@@ -33,18 +33,18 @@
 namespace stages {
 
 enum SynthOscWave {
-  SYNTH_OSC_WAVE_SAW,
-  SYNTH_OSC_WAVE_SQUARE,
-  SYNTH_OSC_WAVE_TRIANGLE,
-  SYNTH_OSC_WAVE_SINE,
+  SYNTH_OSC_WAVE_SAW,       // osc1: super-saw (shape = detune); osc2: single saw
+  SYNTH_OSC_WAVE_SQUARE,    // PWM via shape
+  SYNTH_OSC_WAVE_TRIANGLE,  // wavefolder, shape = fold amount (both oscillators)
+  SYNTH_OSC_WAVE_SINE,      // osc1: sine; osc2: noise (shape = tone)
   SYNTH_OSC_WAVE_LAST
 };
 
 enum SynthFilterMode {
-  SYNTH_FILTER_LP,
-  SYNTH_FILTER_BP,
-  SYNTH_FILTER_HP,
-  SYNTH_FILTER_LADDER,
+  SYNTH_FILTER_LP_AGGRESSIVE,  // green: MS-20-style saturating 4-pole low-pass
+  SYNTH_FILTER_BP,             // orange: band-pass
+  SYNTH_FILTER_HP,             // red: high-pass
+  SYNTH_FILTER_LP_GENTLE,      // off (unlit): smooth 2-pole low-pass
   SYNTH_FILTER_MODE_LAST
 };
 
@@ -77,6 +77,7 @@ struct SynthPatch {
   float osc2_shape;    // 0..1
   int osc2_wave;
   float mix;           // 0 = osc1 only, 1 = osc2 only
+  bool sub_osc;        // osc1 sub-oscillator (square, one octave down) on/off
 
   // Filter
   int filter_mode;
@@ -95,7 +96,7 @@ struct SynthPatch {
   float decrel_curve;  // 0..1
   bool loop;
   float env_to_filter; // -1..1
-  float env_to_pitch;  // -1..1
+  float env_to_shape;  // 0..1: envelope -> osc shape (detune / PWM / fold) depth
 
   // LFO
   float lfo_rate;      // 0..1
@@ -144,20 +145,28 @@ class SynthVoice {
   void RenderFilter(
       const SynthPatch& patch, float cutoff_mod, const float* in, float* out,
       size_t size);
+  // osc1 super-saw: 3 detuned saw cores, spread set by the shape pot.
+  void RenderSuperSaw(float frequency, float detune, float* out, size_t size);
+  // osc2 "off" slot: white noise tilted dark->bright by the shape pot.
+  void RenderNoise(float tone, float* out, size_t size);
 
   Oscillator osc1_;
   Oscillator osc2_;
+  // Two extra detuned saw cores for osc1's super-saw (osc1_ is the centre core).
+  Oscillator osc1_saw_[2];
+  // Sub-oscillator one octave below osc1 (square), toggled by a medium press.
+  Oscillator osc1_sub_;
   Envelope eg_;
-  stmlib::Svf svf_;
-
-  // Ladder filter state (4 cascaded one-poles + feedback).
-  float ladder_stage_[4];
-  float ladder_delay_[4];
+  // Two cascaded 2-pole SVF stages for the virtual-analog low-pass (Plaits-VCF
+  // style); svf_[0] alone also serves the band-pass / high-pass modes.
+  stmlib::Svf svf_[2];
 
   float lfo_phase_;
   float lfo_value_;
   float lfo_sh_value_;
   float lfo_fade_level_;
+
+  float noise_lp_;  // one-pole state for the osc2 noise tone control
 
   float env_value_;
   float previous_env_;
@@ -168,6 +177,7 @@ class SynthVoice {
   float osc1_buffer_[kBlockSize];
   float osc2_buffer_[kBlockSize];
   float fm_buffer_[kBlockSize];
+  float super_buffer_[kBlockSize];  // scratch for super-saw satellite cores
 
   DISALLOW_COPY_AND_ASSIGN(SynthVoice);
 };

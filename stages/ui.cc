@@ -285,14 +285,27 @@ void Ui::Poll() {
           synth_adjusted_ |= 1 << i;
         }
       } else {
-        if (press_time_[i] > 0
-            && press_time_[i] < kLongPressDurationForMultiModeToggle
-            && !(synth_adjusted_ & (1 << i))) {
-          // Tap: cycle this section's discrete type (low 2 bits).
-          uint16_t cfg = s->segment_configuration[i];
-          s->segment_configuration[i] = (cfg & ~0x3) | ((cfg + 1) & 0x3);
-          settings_->SaveState();
-          set_discrete_change(i);
+        if (!(synth_adjusted_ & (1 << i))) {
+          if (press_time_[i] > 0 && press_time_[i] < kLongPressDuration) {
+            // Short tap: cycle this section's discrete type (low 2 bits).
+            uint16_t cfg = s->segment_configuration[i];
+            s->segment_configuration[i] = (cfg & ~0x3) | ((cfg + 1) & 0x3);
+            settings_->SaveState();
+            set_discrete_change(i);
+          } else if (press_time_[i] >= kLongPressDuration
+                     && press_time_[i] < kLongPressDurationForMultiModeToggle) {
+            // Medium press (the regular-Stages loop gesture). On osc1 (ch0) it
+            // toggles the sub-oscillator; other sections fall back to cycling
+            // the type so the gesture is never dead.
+            if (i == 0) {
+              s->segment_configuration[0] ^= kSynthSubOscBit;
+            } else {
+              uint16_t cfg = s->segment_configuration[i];
+              s->segment_configuration[i] = (cfg & ~0x3) | ((cfg + 1) & 0x3);
+            }
+            settings_->SaveState();
+            set_discrete_change(i);
+          }
         }
         press_time_[i] = 0;
       }
@@ -489,12 +502,18 @@ void Ui::UpdateLEDs() {
       // Button LED shows the section's discrete type (off/green/orange/red);
       // slider LED shows the live signal animation set by the voice renderer.
       for (size_t i = 0; i < kNumChannels; ++i) {
-        uint8_t type = settings_->state().segment_configuration[i] & 0x3;
+        uint16_t cfg = settings_->state().segment_configuration[i];
+        uint8_t type = cfg & 0x3;
         LedColor color = palette_[type];
         uint32_t dur = ms - discrete_change_time_[i];
         if (dur <= kDiscreteStateBlinkDur + kDiscreteStatePreBlinkDur
             && dur > kDiscreteStatePreBlinkDur) {
           color = LED_COLOR_OFF;  // brief blink to acknowledge a change
+        }
+        // osc1 sub-oscillator on: a gentle recurring wink of the button LED so
+        // it reads as "enabled" without hiding the waveform colour.
+        if (i == 0 && (cfg & kSynthSubOscBit) && (ms & 0x3ff) < 0x60) {
+          color = LED_COLOR_OFF;
         }
         leds_.set(LED_GROUP_UI + i, color);
         leds_.set(LED_GROUP_SLIDER + i,

@@ -271,8 +271,8 @@ sections become functional blocks of one voice, laid out left → right like a
 synth block diagram; the finished voice exits the **rightmost** jack (ch5):
 
 ```
- ch0     ch1      ch2       ch3      ch4      ch5
- OSC1    OSC2     FILTER    LFO      ADSR-2   ADSR-1 → MAIN OUT
+ ch0     ch1      ch2       ch3      ch4         ch5
+ OSC1    OSC2     FILTER    LFO      ENV A/Flt   ENV DR/S → MAIN OUT
 ```
 
 Every section follows the **same control grammar**:
@@ -292,19 +292,20 @@ Full control map:
 
 | Section (jack)  | Slider (A) | Pot (B) | Tap button — type (LED green/orange/red/off) | Hold + Slider (A′) | Hold + Pot (B′) | Input jack | Output jack |
 | ---             | ---        | ---     | ---                                          | ---                | ---             | ---        | ---         |
-| **ch0 OSC1**    | Coarse tune (±2 oct) | Shape (PWM) | Wave: Saw / Square / Triangle / Sine | Fine tune (±1 semi) | *(reserved)* | **1V/oct** pitch | OSC1 raw |
-| **ch1 OSC2**    | Coarse / interval | Shape (PWM) | Wave: Saw / Square / Triangle / Sine | Fine tune (±1 semi) | Mix OSC1↔OSC2 | Gate→hard-sync, CV→FM | OSC2 raw |
-| **ch2 FILTER**  | Cutoff | Resonance | Mode: LP / BP / HP / Ladder | Key-track amount | Drive | Cutoff CV (+) | Filter out (pre-VCA) |
-| **ch3 LFO**     | Rate (~0.05–36 Hz) | Depth | Wave: Triangle / Saw / Square / S&H | Fade-in time | Destination: Pitch / PWM / Cutoff | *(unused)* | LFO out |
-| **ch4 ADSR-2**  | Sustain | Release | Decay/Release curve: linear / exp / log / sharp | Loop env (up = on) | Env→Pitch (bipolar, centre = 0) | **Gate / trigger** | Envelope CV |
-| **ch5 ADSR-1**  | Attack | Decay | Attack curve: linear / exp / log / sharp | *(none)* | Env→Filter (bipolar, centre = 0) | Accent / velocity | **MAIN voice out** |
+| **ch0 OSC1**    | Coarse tune (2 oct, ±1) | Shape (Saw = super-saw detune / Square = PW / Triangle = fold) | Wave: Saw (super-saw) / Square / Triangle (folder) / Sine — *medium press: toggle sub-osc (1 oct down)* | Fine tune (±1 semi) | *(reserved)* | **1V/oct** pitch | OSC1 raw |
+| **ch1 OSC2**    | Coarse / interval (2 oct, ±1) | Shape (Square = PW / Triangle = fold / Noise = tone) | Wave: Saw / Square / Triangle (folder) / Noise | Fine tune (±1 semi) | Mix OSC1↔OSC2 (default 50/50) | Gate→hard-sync, CV→FM | OSC2 raw |
+| **ch2 FILTER**  | Cutoff | Resonance | Mode: LP aggressive (MS-20 4-pole) / BP / HP / LP gentle (2-pole) | Key-track amount | Drive | Cutoff CV (+) | Filter out (pre-VCA) |
+| **ch3 LFO**     | Rate (~0.05–36 Hz) | Depth | Wave: Triangle / Saw / Square / S&H | Fade-in time | Destination: Pitch / PWM / Cutoff (default PWM) | Rate CV (+) | LFO out |
+| **ch4 ENV A/Flt** | Attack | Env→Filter amount (bipolar, centre = 0) | Attack curve: linear / exp / log / sharp | *(none)* | Env→shape amount (both oscs; 0 = off) | **Gate / trigger** | Envelope CV |
+| **ch5 ENV DR/S** | Decay/Release time (shared) | Sustain | Decay/Release curve: linear / exp / log / sharp | Loop env (up = on) | *(none)* | Level / drone CV (→ VCA) | **MAIN voice out** |
 
-The single ADSR (attack = ch5 slider, decay = ch5 pot, sustain = ch4 slider,
-release = ch4 pot) drives **both** the VCA and the Env→Filter / Env→Pitch
-routings. Bipolar hidden pots (Env→Pitch, Env→Filter) are off at 12 o'clock.
+The envelope (attack = ch4 slider, decay/release = ch5 slider, sustain = ch5
+pot) drives the VCA, and its **filter amount is the live ch4 pot** (bipolar, off
+at 12 o'clock). Env→Pitch has been removed — sweep pitch via the oscillator CV
+inputs (ch0/ch1) instead.
 
 **Make a sound:** enter the mode (hold ch2's button 5 s), patch a gate into ch4
-and take audio from ch5, then play 1V/oct on ch0. No gate handy? Hold ch4's
+and take audio from ch5, then play 1V/oct on ch0. No gate handy? Hold ch5's
 button and push its slider up to **loop** the envelope so it free-runs.
 
 **Persistence:** only the tap-cycled *types* (waveforms, filter mode, LFO wave,

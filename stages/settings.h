@@ -73,6 +73,11 @@ struct PersistentData {
 
 #define is_bipolar(seg_config) seg_config & 0x08
 
+// Synth mode reuses the otherwise-unused bit 7 of segment_configuration[0] to
+// store the osc1 sub-oscillator (one octave down) on/off toggle, set by a
+// medium press of the osc1 button.
+const uint16_t kSynthSubOscBit = 0x0080;
+
 struct State {
   uint16_t segment_configuration[kNumChannels];
   uint8_t color_blind;

@@ -362,7 +362,9 @@ void ProcessOuroboros(IOBuffer::Block* block, size_t size) {
 // Synth voice mode.
 //
 // The six sections drive one monophonic voice (see stages/docs/synth_plan.md):
-//   ch0 OSC1, ch1 OSC2, ch2 FILTER, ch3 LFO, ch4 ADSR-2, ch5 ADSR-1.
+//   ch0 OSC1, ch1 OSC2, ch2 FILTER, ch3 LFO,
+//   ch4 ENV attack + filter-env amount (gate in here),
+//   ch5 ENV decay/release time + sustain (main out).
 // Primary controls (slider/pot) are always live. Holding a section's button
 // re-tasks its slider/pot to a hidden "shift" parameter (latched in RAM here).
 // Discrete selections (tap-cycled) live in segment_configuration[] and are
@@ -370,7 +372,6 @@ void ProcessOuroboros(IOBuffer::Block* block, size_t size) {
 // -----------------------------------------------------------------------------
 
 float synth_out[kNumChannels][kBlockSize];
-GateFlags synth_fm_gate[kBlockSize];
 
 // Frozen primary slider/pot per channel (held while the button is pressed so
 // the hidden-parameter gesture does not disturb the primary value).
@@ -385,15 +386,22 @@ void InitSynthState() {
   for (size_t i = 0; i < kNumChannels; ++i) {
     synth_primary_slider[i] = 0.5f;
     synth_primary_pot[i] = 0.5f;
-    synth_hidden_slider[i] = 0.5f;
+    synth_hidden_slider[i] = 0.0f;
     synth_hidden_pot[i] = 0.0f;
   }
-  // Sensible hidden-parameter defaults.
-  synth_hidden_pot[1] = 0.0f;   // osc mix -> osc1 only
-  synth_hidden_slider[0] = 0.5f; // osc1 fine -> centred
-  synth_hidden_slider[1] = 0.5f; // osc2 fine -> centred
-  synth_hidden_pot[5] = 0.5f;   // env->filter -> 0 (bipolar centre)
-  synth_hidden_pot[4] = 0.5f;   // env->pitch  -> 0 (bipolar centre)
+  // Hidden ("hold button + move") parameters keep their value until the gesture
+  // is used, so their power-up defaults are what you actually hear. Keep them
+  // neutral so the primary slider/pot of each section behave as expected.
+  synth_hidden_slider[0] = 0.5f; // osc1 fine tune -> centred
+  synth_hidden_slider[1] = 0.5f; // osc2 fine tune -> centred
+  synth_hidden_pot[1] = 0.5f;    // osc mix -> equal blend of OSC1 + OSC2
+  synth_hidden_slider[2] = 0.0f; // filter key-track -> off (was forcing cutoff)
+  synth_hidden_pot[2] = 0.0f;    // filter drive -> off
+  synth_hidden_slider[3] = 0.0f; // lfo fade-in -> immediate
+  synth_hidden_pot[3] = 0.5f;    // lfo destination -> PWM
+  synth_hidden_slider[5] = 0.0f; // envelope loop -> off
+  // ch4/ch5 have no hold+pot gesture in this layout (Env->Filter is the live
+  // ch4 pot; Env->Pitch is removed), so their hidden pots are unused.
 }
 
 // Map a 2-bit curve selector to an envelope curve value.
@@ -406,10 +414,16 @@ void ProcessSynth(IOBuffer::Block* block, size_t size) {
   const uint16_t* config = settings.state().segment_configuration;
 
   // Latch primary / hidden values depending on whether each button is held.
+  // While a button is held we freeze the primary value; the hidden ("shift")
+  // parameter only tracks the slider/pot once the UI has confirmed an actual
+  // hold + move gesture (synth_adjusted). This keeps a plain tap (used to cycle
+  // the section's type) from overwriting the hidden parameter.
   for (size_t i = 0; i < kNumChannels; ++i) {
     if (ui.switches().pressed(i)) {
-      synth_hidden_pot[i] = block->pot[i];
-      synth_hidden_slider[i] = block->slider[i];
+      if (ui.synth_adjusted(i)) {
+        synth_hidden_pot[i] = block->pot[i];
+        synth_hidden_slider[i] = block->slider[i];
+      }
     } else {
       synth_primary_slider[i] = block->slider[i];
       synth_primary_pot[i] = block->pot[i];
@@ -420,13 +434,15 @@ void ProcessSynth(IOBuffer::Block* block, size_t size) {
 
   // ch0 OSC1 -------------------------------------------------------------
   patch.base_pitch = block->cv[0] * 96.0f;  // calibrated V/oct (~1V/oct)
-  patch.osc1_coarse = (synth_primary_slider[0] - 0.5f) * 48.0f;  // +/- 2 oct
+  patch.osc1_coarse = (synth_primary_slider[0] - 0.5f) * 24.0f;  // 2 oct (+/-1)
   patch.osc1_fine = (synth_hidden_slider[0] - 0.5f) * 2.0f;      // +/- 1 semi
   patch.osc1_shape = synth_primary_pot[0];
   patch.osc1_wave = config[0] & 0x3;
+  // ch0 medium press toggles the osc1 sub-oscillator (one octave down).
+  patch.sub_osc = (config[0] & kSynthSubOscBit) != 0;
 
   // ch1 OSC2 -------------------------------------------------------------
-  patch.osc2_coarse = (synth_primary_slider[1] - 0.5f) * 48.0f;
+  patch.osc2_coarse = (synth_primary_slider[1] - 0.5f) * 24.0f;  // 2 oct (+/-1)
   patch.osc2_fine = (synth_hidden_slider[1] - 0.5f) * 2.0f;
   patch.osc2_shape = synth_primary_pot[1];
   patch.osc2_wave = config[1] & 0x3;
@@ -438,40 +454,53 @@ void ProcessSynth(IOBuffer::Block* block, size_t size) {
   patch.resonance = synth_primary_pot[2];
   patch.drive = synth_hidden_pot[2];
   patch.key_track = synth_hidden_slider[2];
-  patch.cutoff_cv = block->input_patched[2] ? block->cv[2] : 0.0f;
+  // Cutoff CV adds to the cutoff slider. block->cv is always read and reads ~0
+  // when nothing is patched (same as the slider-only behaviour of stock Stages),
+  // so we sum it unconditionally instead of gating on jack detection. Calibrated
+  // cv is ~0.0625 per volt, so x6 lets a ~+3V env/LFO sweep the cutoff fully.
+  patch.cutoff_cv = block->cv[2] * 6.0f;
 
   // ch3 LFO --------------------------------------------------------------
-  patch.lfo_rate = synth_primary_slider[3];
+  // Rate CV (ch3 input) sums into the rate slider, again unconditionally.
+  patch.lfo_rate = synth_primary_slider[3] + block->cv[3] * 4.0f;
+  CONSTRAIN(patch.lfo_rate, 0.0f, 1.0f);
   patch.lfo_depth = synth_primary_pot[3];
   patch.lfo_wave = config[3] & 0x3;
   patch.lfo_dest = static_cast<int>(synth_hidden_pot[3] * 2.99f);
   patch.lfo_fade = synth_hidden_slider[3];
 
-  // ch4 ADSR-2 (sustain / release / curves / env->pitch / loop) ----------
-  patch.sustain = synth_primary_slider[4];
-  patch.release = synth_primary_pot[4];
-  patch.decrel_curve = SynthCurve(config[4] & 0x3);
-  patch.env_to_pitch = (synth_hidden_pot[4] - 0.5f) * 2.0f;
-  patch.loop = synth_hidden_slider[4] > 0.5f;
+  // ch4 attack + filter-env amount (attack curve tap; gate patched here) --
+  // Pot is now a primary control (bipolar Env->Filter); no hold+pot gesture.
+  patch.attack = synth_primary_slider[4];
+  patch.env_to_filter = (synth_primary_pot[4] - 0.5f) * 2.0f;
+  patch.attack_curve = SynthCurve(config[4] & 0x3);
+  // ch4 hold+pot: envelope -> oscillator shape modulation depth (0 = off).
+  // Sweeps saw detune / square PWM / triangle fold on both oscillators.
+  patch.env_to_shape = synth_hidden_pot[4];
 
-  // ch5 ADSR-1 (attack / decay / curve / env->filter / accent) -----------
-  patch.attack = synth_primary_slider[5];
-  patch.decay = synth_primary_pot[5];
-  patch.attack_curve = SynthCurve(config[5] & 0x3);
-  patch.env_to_filter = (synth_hidden_pot[5] - 0.5f) * 2.0f;
-  patch.accent = block->input_patched[5] ? block->cv[5] : 0.0f;
+  // ch5 decay/release time + sustain (dec/rel curve tap; loop; main out) --
+  // Decay and release share one time; Env->Pitch is removed (use the osc CV
+  // inputs for pitch sweeps). No hold+pot gesture.
+  patch.decay = synth_primary_slider[5];
+  patch.release = synth_primary_slider[5];
+  patch.sustain = synth_primary_pot[5];
+  patch.decrel_curve = SynthCurve(config[5] & 0x3);
+  patch.loop = synth_hidden_slider[5] > 0.5f;
+  // ch5 CV is a level/drone control summed into the VCA (unconditionally; reads
+  // ~0 when unpatched). x6 lets a ~+3V CV hold the voice fully open for droning.
+  patch.accent = block->cv[5] * 6.0f;
   CONSTRAIN(patch.accent, 0.0f, 1.0f);
 
-  // Jacks: ch4 gate -> envelope, ch1 gate -> osc2 sync, ch1 CV -> osc2 FM.
+  // Jacks. The digital gate / sync paths MUST stay gated on jack detection: an
+  // unpatched input reads the normalization probe (a square wave) and would
+  // otherwise self-trigger. The analog CV paths are summed unconditionally.
   const GateFlags* gate = block->input_patched[4] ? block->input[4] : no_gate;
   const GateFlags* sync_gate = block->input_patched[1] ? block->input[1] : NULL;
-  const float* fm = NULL;
-  if (block->input_patched[1]) {
-    for (size_t i = 0; i < size; ++i) {
-      synth_fm[i] = block->cv[1];
-    }
-    fm = synth_fm;
+  // ch1 CV -> linear FM into osc2, always applied (reads ~0 when unpatched).
+  for (size_t i = 0; i < size; ++i) {
+    synth_fm[i] = block->cv[1];
   }
+  const float* fm = synth_fm;
 
   SynthOutputs out;
   out.osc1 = synth_out[0];

@@ -89,6 +89,14 @@ class Oscillator {
     pw_ = 0.5f;
   }
 
+  // Hard-sync: reset the phase without disturbing the running frequency /
+  // interpolation state, so it can be driven from a gate edge while the
+  // oscillator keeps tracking pitch and FM.
+  void SyncReset() {
+    phase_ = 0.0f;
+    next_sample_ = 0.0f;
+  }
+
   template<OscillatorShape shape>
   void Render(float frequency, float pw, float* out, size_t size) {
     Render<shape, false, false>(frequency, pw, NULL, out, size);
