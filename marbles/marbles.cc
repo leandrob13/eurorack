@@ -32,6 +32,7 @@
 #include "marbles/drivers/rng.h"
 #include "marbles/drivers/system.h"
 
+#include "marbles/grids/pattern_generator.h"  // kPulsesPerStep
 #include "marbles/ramp/ramp_extractor.h"
 #include "marbles/random/random_generator.h"
 #include "marbles/random/random_stream.h"
@@ -96,6 +97,24 @@ uint32_t t_clock_silence_samples = 0;
 uint32_t t_clock_last_period_samples = kSampleRate / 2;  // 500 ms initial guess
 uint32_t x_clock_silence_samples = 0;
 uint32_t x_clock_last_period_samples = kSampleRate / 2;
+
+// TB-3PO external-clock ramp recovery (Grids mode). When the XY clock jack is
+// patched, the bassline is clocked from a recovered ramp — exactly like the
+// drum part handles its own external clock — so the T RATE knob applies the
+// same 1/4..4 frequency ratio (neutral 1:1 at 12 o'clock) instead of stepping
+// once per raw clock edge.
+RampExtractor x_ramp_extractor;
+HysteresisQuantizer2 x_rate_quantizer;
+float x_ext_ramp_buffer[kBlockSize];
+float prev_x_ext_ramp = 0.0f;
+bool prev_x_ext = false;
+
+// The same 9-ratio table the T-section uses for external-clock division
+// (TGenerator::input_divider_ratios is private, so it is mirrored here).
+const Ratio kXInputDividerRatios[] = {
+  { 1, 4 }, { 1, 3 }, { 1, 2 }, { 2, 3 }, { 1, 1 },
+  { 3, 2 }, { 2, 1 }, { 3, 1 }, { 4, 1 },
+};
 
 // Default interrupt handlers.
 extern "C" {
@@ -437,6 +456,34 @@ void Process(IOBuffer::Block* block, size_t size) {
       master_gates,
       size);
 
+  // In Grids mode, when the XY clock jack drives TB-3PO, recover a ramp from it
+  // so the T RATE knob scales the bassline clock by the same 1/4..4 ratio the
+  // drum part applies to its own external clock (neutral 1:1 at 12 o'clock).
+  // T RANGE (0.25x / 4x) is folded in too so the bassline tracks the drums.
+  bool x_ext_clock = grids_mode && xy_clock_source == CLOCK_SOURCE_EXTERNAL;
+  if (x_ext_clock) {
+    if (!prev_x_ext) {
+      x_ramp_extractor.Reset();
+      prev_x_ext_ramp = 0.0f;
+    }
+    float t_rate = cv_reader.channel(ADC_CHANNEL_T_RATE).pot();
+    Ratio ratio = x_rate_quantizer.Lookup(
+        kXInputDividerRatios, 1.05f * t_rate / 96.0f + 0.5f);
+    if (state.t_range == T_GENERATOR_RANGE_0_25X) {
+      ratio.q *= 4;
+    } else if (state.t_range == T_GENERATOR_RANGE_4X) {
+      ratio.p *= 4;
+    }
+    // Internally one TB-3PO step spans kPulsesPerStep * 2 grids ticks (the
+    // ramps.master period). The drum part's external clock advances grids one
+    // tick per pulse, so divide the recovered X ramp by the same factor —
+    // otherwise a clock shared with the T jack runs the bassline 6× too fast.
+    ratio.q *= kPulsesPerStep * 2;
+    ratio.Simplify<2>();
+    x_ramp_extractor.Process(ratio, true, xy_clock, x_ext_ramp_buffer, size);
+  }
+  prev_x_ext = x_ext_clock;
+
   // Generate voltages for X-section (40%).
   float note_cv_1 = cv_reader.channel(ADC_CHANNEL_X_SPREAD).scaled_raw_cv();
   float note_cv_2 = cv_reader.channel(ADC_CHANNEL_X_SPREAD_2).scaled_raw_cv();
@@ -559,18 +606,30 @@ void Process(IOBuffer::Block* block, size_t size) {
       }
 
       if (x_ext) {
-        // X clock jack drives TB-3PO: rising edge → new step, falling → gate off.
+        // X clock jack drives TB-3PO via the recovered ramp (filled above), so
+        // the T RATE knob divides/multiplies the bassline clock just like the
+        // drum part. Step boundary = ramp wrap; gate-off = 0.5 crossing —
+        // identical to the internal-clock path below.
+        float xr = x_ext_ramp_buffer[i];
+        bool x_step_boundary = xr < prev_x_ext_ramp - 0.5f;
+        bool x_half_cycle = prev_x_ext_ramp < 0.5f && xr >= 0.5f;
+        if (x_step_boundary) {
+          tb3po.Tick(tb3po_reset_pending);
+          tb3po_reset_pending = false;
+        }
+        if (x_half_cycle) {
+          tb3po.TickHalfCycle();
+        }
+        prev_x_ext_ramp = xr;
+
+        // Stall watchdog, still driven by the raw clock edges: force the gate
+        // off if the upstream clock stops so downstream VCAs/ADSRs don't latch.
         if (xy_clock[i] & GATE_FLAG_RISING) {
           if (x_clock_silence_samples > 0) {
             x_clock_last_period_samples = x_clock_silence_samples;
           }
           x_clock_silence_samples = 0;
-          tb3po.Tick(tb3po_reset_pending);
-          tb3po_reset_pending = false;
         } else {
-          if (xy_clock[i] & GATE_FLAG_FALLING) {
-            tb3po.TickHalfCycle();
-          }
           uint32_t threshold = x_clock_last_period_samples * 2;
           if (threshold < static_cast<uint32_t>(kSampleRate / 8)) {
             threshold = kSampleRate / 8;
@@ -671,6 +730,11 @@ void Init() {
   random_stream.Init(&random_generator);
   t_generator.Init(&random_stream, static_cast<float>(kSampleRate));
   xy_generator.Init(&random_stream, static_cast<float>(kSampleRate));
+
+  // TB-3PO external-clock ramp recovery — same setup as TGenerator's own
+  // external clock path (max input frequency + 9-step rate quantizer).
+  x_ramp_extractor.Init(1000.0f / static_cast<float>(kSampleRate));
+  x_rate_quantizer.Init(kNumInputDividerRatios, 0.05f, false);
 
   for (size_t i = 0; i < kNumScales; ++i) {
     xy_generator.LoadScale(i, settings.persistent_data().scale[i]);
