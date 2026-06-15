@@ -39,8 +39,8 @@ const float kSr = 31250.0f;
 // control rate (used for the envelope and LFO) is fixed.
 const float kBlockRate = kSr / float(kBlockSize);
 // Base oscillator frequency with no CV patched and the coarse slider centred:
-// C3 (one octave below middle C) for a deeper default voice.
-const float kBaseFreq = 130.81278f;
+// C2 (two octaves below middle C) for a deeper default voice.
+const float kBaseFreq = 65.40639f;
 // Linear-FM index for the ch1 CV -> osc2 path. Calibrated cv is ~0.0625 per
 // volt, so this makes ~+4V roughly double osc2's frequency (+1 octave).
 const float kFmDepth = 4.0f;
