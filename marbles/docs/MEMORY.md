@@ -118,15 +118,17 @@ In `Process()`, when `model_ == T_GENERATOR_MODEL_GRIDS`, the per-sample
 | RATE knob | Tempo / clock division |
 | BIAS knob | Drums map X coordinate |
 | JITTER knob | Drums map Y coordinate |
-| RATE CV | BD density offset (base 0.5) |
-| BIAS CV | SD density offset (base 0.5) |
-| JITTER CV | HH density offset (base 0.5) |
+| RATE CV | BD density (unipolar, 0V silent .. +5V full) |
+| BIAS CV | SD density (unipolar, 0V silent .. +5V full) |
+| JITTER CV | HH density (unipolar, 0V silent .. +5V full) |
 | Deja Vu knob + CV | Drums randomness / chaos (Drums sub-mode only) |
 | LENGTH knob | Euclidean step count 1–16 (Euclidean sub-mode only) |
 | Deja Vu button | Sub-mode: OFF = Drums, ON/LOCKED = Euclidean |
 
-Density formula: `clamp(0.5 + cv / 120.0f, 0, 1)` for BD (RATE CV scale);
-`clamp(0.5 + cv, 0, 1)` for SD and HH.
+Density formula (unipolar, 0V = silent .. +5V = full): `clamp(cv / 60.0f, 0, 1)`
+for BD (RATE cv() spans +-60); `clamp(cv, 0, 1)` for SD and HH (BIAS/JITTER cv()
+span +-1). The clamp drops negative CV to 0 and prevents the uint8 density byte
+from wrapping. No base, so an unpatched density input leaves that voice silent.
 
 `set_deja_vu()` and `set_length()` are **not** called for the T section when
 Grids mode is active — the Deja Vu state is consumed as a sub-mode selector.

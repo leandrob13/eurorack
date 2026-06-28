@@ -367,10 +367,18 @@ void Process(IOBuffer::Block* block, size_t size) {
     t_generator.set_bias(cv_reader.channel(ADC_CHANNEL_T_BIAS).pot());
     t_generator.set_jitter(cv_reader.channel(ADC_CHANNEL_T_JITTER).pot());
 
-    float bd = cv_reader.channel(ADC_CHANNEL_T_RATE).cv() / 120.0f;
+    // Per-voice density: unipolar CV, 0V = silent .. +5V = full, clamped to
+    // [0,1]. RATE cv() spans +-60 (calibration scale 120) so BD divides by 60
+    // (not 120) to reach 1.0 at full positive CV; BIAS/JITTER cv() span +-1 and
+    // map directly. The clamp drops negative CV to 0 and stops the uint8 density
+    // byte from wrapping to ~255. With nothing patched a voice stays silent.
+    float bd = cv_reader.channel(ADC_CHANNEL_T_RATE).cv() / 60.0f;
     float sd = cv_reader.channel(ADC_CHANNEL_T_BIAS).cv();
     float hh = cv_reader.channel(ADC_CHANNEL_T_JITTER).cv();
-    
+    CONSTRAIN(bd, 0.0f, 1.0f);
+    CONSTRAIN(sd, 0.0f, 1.0f);
+    CONSTRAIN(hh, 0.0f, 1.0f);
+
     t_generator.set_grids_bd_density(bd);
     t_generator.set_grids_sd_density(sd);
     t_generator.set_grids_hh_density(hh);
